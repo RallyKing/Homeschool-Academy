@@ -76,13 +76,6 @@ export default function AcademyDashboardPage() {
 
   const selectedAcademyDoc = academies?.find((a) => a._id === academyId);
 
-  useEffect(() => {
-    if (selectedAcademyDoc && academyModalMode === "edit") {
-      setName(selectedAcademyDoc.name);
-      setDescription(selectedAcademyDoc.description ?? "");
-    }
-  }, [selectedAcademyDoc, academyModalMode]);
-
   const courses = useQuery(
     api.courses.listForAcademy,
     academyId ? { academyId } : "skip",

@@ -6,6 +6,18 @@ import { useRouter } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
+import {
+  Badge,
+  Button,
+  EmptyState,
+  Input,
+  Message,
+  Modal,
+  PageHeader,
+  Section,
+  Select,
+  Textarea,
+} from "@/components/ui";
 
 function currentTimeMs(): number {
   return Date.now();
@@ -50,6 +62,7 @@ export default function AlertsPage() {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [studentId, setStudentId] = useState("");
+  const [createOpen, setCreateOpen] = useState(false);
   const [editId, setEditId] = useState<Id<"alerts"> | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editBody, setEditBody] = useState("");
@@ -117,6 +130,7 @@ export default function AlertsPage() {
       setTitle("");
       setBody("");
       setStudentId("");
+      setCreateOpen(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create alert");
     } finally {
@@ -144,13 +158,13 @@ export default function AlertsPage() {
   }
 
   if (user === undefined || alerts === undefined) {
-    return <p className="text-sm text-neutral-500">Loading alerts…</p>;
+    return <p className="text-sm text-[var(--muted)]">Loading alerts…</p>;
   }
 
   if (user === null) {
     return (
-      <p className="text-sm text-neutral-600">
-        <Link href="/sign-in" className="underline">
+      <p className="text-sm text-[var(--muted)]">
+        <Link href="/sign-in" className="font-medium text-[var(--accent)] hover:underline">
           Sign in
         </Link>{" "}
         to view alerts.
@@ -162,201 +176,183 @@ export default function AlertsPage() {
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Alerts</h1>
-          <p className="mt-1 text-sm text-neutral-600">
-            {role === "student"
-              ? "New assignments, schedule updates, and notes for you."
-              : "Family activity: student requests, completions, and reminders."}
-            {unread > 0 ? ` · ${unread} unread` : ""}
-          </p>
-        </div>
-        {unread > 0 && (
-          <button
-            type="button"
-            onClick={() => void onMarkAll()}
-            className="text-sm text-neutral-700 underline hover:text-neutral-900"
-          >
-            Mark all read
-          </button>
-        )}
-      </div>
+      <PageHeader
+        title="Alerts"
+        description={
+          role === "student"
+            ? "New assignments, schedule updates, and notes for you."
+            : "Family activity: student requests, completions, and reminders."
+        }
+        actions={
+          <>
+            {unread > 0 && (
+              <Button variant="secondary" size="sm" onClick={() => void onMarkAll()}>
+                Mark all read
+              </Button>
+            )}
+            {canCreate && (
+              <Button size="sm" onClick={() => setCreateOpen(true)}>
+                Send alert
+              </Button>
+            )}
+          </>
+        }
+      />
 
-      {error && (
-        <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
-          {error}
-        </p>
+      {unread > 0 && (
+        <Badge tone="warning">{unread} unread</Badge>
       )}
 
-      {canCreate && (
-        <form
-          onSubmit={(e) => void onCreate(e)}
-          className="space-y-3 border-t border-neutral-200 pt-6"
-        >
-          <h2 className="text-sm font-medium text-neutral-800">Send an alert</h2>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Title"
-              className="rounded border border-neutral-300 px-3 py-2 text-sm"
-            />
-            <select
-              value={studentId}
-              onChange={(e) => setStudentId(e.target.value)}
-              className="rounded border border-neutral-300 px-3 py-2 text-sm"
-            >
-              <option value="">Whole family</option>
-              {(students ?? []).map((s) => (
-                <option key={s._id} value={s._id}>
-                  {s.displayName}
-                </option>
-              ))}
-            </select>
-          </div>
-          <textarea
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            placeholder="Message"
-            rows={2}
-            className="w-full rounded border border-neutral-300 px-3 py-2 text-sm"
-          />
-          <button
-            type="submit"
-            disabled={busy}
-            className="rounded bg-neutral-900 px-3 py-2 text-sm text-white disabled:opacity-50"
-          >
-            Create alert
-          </button>
-        </form>
-      )}
+      <Message tone="error">{error}</Message>
 
-      <ul className="divide-y divide-neutral-200 border-t border-neutral-200">
-        {alerts.length === 0 && (
-          <li className="py-8 text-sm text-neutral-500">No alerts yet.</li>
-        )}
-        {alerts.map((alert) => {
-          const unreadItem = alert.readAt === undefined;
-          return (
-            <li
-              key={alert._id}
-              className={`flex flex-col gap-2 py-4 sm:flex-row sm:items-start sm:justify-between ${
-                unreadItem ? "bg-amber-50/40" : ""
-              }`}
-            >
-              {editId === alert._id ? (
-                <form
-                  onSubmit={(e) => void onSaveEdit(e)}
-                  className="w-full space-y-2"
+      <Section title="Inbox">
+        {alerts.length === 0 ? (
+          <EmptyState>No alerts yet.</EmptyState>
+        ) : (
+          <div className="space-y-2">
+            {alerts.map((alert) => {
+              const unreadItem = alert.readAt === undefined;
+              return (
+                <div
+                  key={alert._id}
+                  className={`list-row ${unreadItem ? "border-[var(--warning)]/25 bg-[var(--warning-soft)]" : ""}`}
                 >
-                  <input
-                    value={editTitle}
-                    onChange={(e) => setEditTitle(e.target.value)}
-                    className="w-full rounded border border-neutral-300 px-3 py-2 text-sm"
-                  />
-                  <textarea
-                    value={editBody}
-                    onChange={(e) => setEditBody(e.target.value)}
-                    rows={2}
-                    className="w-full rounded border border-neutral-300 px-3 py-2 text-sm"
-                  />
-                  <div className="flex gap-3 text-sm">
-                    <button
-                      type="submit"
-                      disabled={busy}
-                      className="text-neutral-900 underline"
-                    >
-                      Save
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setEditId(null)}
-                      className="text-neutral-500 underline"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </form>
-              ) : (
-                <>
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-xs uppercase tracking-wide text-neutral-500">
+                      <Badge tone="neutral">
                         {typeLabels[alert.type] ?? alert.type}
-                      </span>
-                      {unreadItem && (
-                        <span className="text-xs font-medium text-amber-800">
-                          Unread
-                        </span>
-                      )}
-                      <span className="text-xs text-neutral-400">
+                      </Badge>
+                      {unreadItem && <Badge tone="warning">Unread</Badge>}
+                      <span className="text-xs text-[var(--muted-fg)]">
                         {formatWhen(alert.createdAt)}
                       </span>
                     </div>
                     <button
                       type="button"
                       onClick={() => void onOpen(alert._id, alert.href)}
-                      className="mt-1 text-left font-medium text-neutral-900 hover:underline"
+                      className="mt-2 text-left font-display text-base font-semibold tracking-tight text-[var(--foreground)] hover:text-[var(--accent)]"
                     >
                       {alert.title}
                     </button>
-                    <p className="mt-0.5 text-sm text-neutral-600">{alert.body}</p>
-                    {alert.href && (
-                      <Link
-                        href={alert.href}
-                        onClick={() =>
-                          void markRead({
-                            alertId: alert._id,
-                            now: currentTimeMs(),
-                          })
-                        }
-                        className="mt-1 inline-block text-sm text-neutral-700 underline"
-                      >
-                        Open
-                      </Link>
-                    )}
+                    <p className="mt-0.5 text-sm text-[var(--muted)]">{alert.body}</p>
                   </div>
-                  <div className="flex shrink-0 gap-3 text-sm">
+                  <div className="flex shrink-0 flex-wrap gap-1.5">
                     {unreadItem && (
-                      <button
-                        type="button"
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={() =>
                           void markRead({
                             alertId: alert._id,
                             now: currentTimeMs(),
                           })
                         }
-                        className="text-neutral-600 underline"
                       >
                         Mark read
-                      </button>
+                      </Button>
                     )}
-                    <button
-                      type="button"
+                    <Button
+                      variant="secondary"
+                      size="sm"
                       onClick={() => {
                         setEditId(alert._id);
                         setEditTitle(alert.title);
                         setEditBody(alert.body);
                       }}
-                      className="text-neutral-600 underline"
                     >
                       Edit
-                    </button>
-                    <button
-                      type="button"
+                    </Button>
+                    <Button
+                      variant="danger"
+                      size="sm"
                       onClick={() => void onDismiss(alert._id)}
-                      className="text-neutral-600 underline"
                     >
                       Dismiss
-                    </button>
+                    </Button>
                   </div>
-                </>
-              )}
-            </li>
-          );
-        })}
-      </ul>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Section>
+
+      <Modal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        title="Send an alert"
+        description="Notify the whole family or a specific student."
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setCreateOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" form="create-alert-form" disabled={busy}>
+              {busy ? "Sending…" : "Create alert"}
+            </Button>
+          </>
+        }
+      >
+        <form id="create-alert-form" onSubmit={(e) => void onCreate(e)} className="space-y-4">
+          <Input
+            label="Title"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            required
+          />
+          <Select
+            label="Recipient"
+            value={studentId}
+            onChange={(e) => setStudentId(e.target.value)}
+          >
+            <option value="">Whole family</option>
+            {(students ?? []).map((s) => (
+              <option key={s._id} value={s._id}>
+                {s.displayName}
+              </option>
+            ))}
+          </Select>
+          <Textarea
+            label="Message"
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            rows={3}
+            required
+          />
+        </form>
+      </Modal>
+
+      <Modal
+        open={editId !== null}
+        onClose={() => setEditId(null)}
+        title="Edit alert"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setEditId(null)}>
+              Cancel
+            </Button>
+            <Button type="submit" form="edit-alert-form" disabled={busy}>
+              {busy ? "Saving…" : "Save"}
+            </Button>
+          </>
+        }
+      >
+        <form id="edit-alert-form" onSubmit={(e) => void onSaveEdit(e)} className="space-y-4">
+          <Input
+            label="Title"
+            value={editTitle}
+            onChange={(e) => setEditTitle(e.target.value)}
+            required
+          />
+          <Textarea
+            label="Message"
+            value={editBody}
+            onChange={(e) => setEditBody(e.target.value)}
+            rows={3}
+            required
+          />
+        </form>
+      </Modal>
     </div>
   );
 }
