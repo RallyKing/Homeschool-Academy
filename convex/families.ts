@@ -179,7 +179,7 @@ export const removeMember = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { user } = await requireFamilyAccess(ctx, args.familyId);
+    await requireFamilyAccess(ctx, args.familyId);
     const family = await ctx.db.get("families", args.familyId);
     if (!family) {
       throw new Error("Family not found");
@@ -187,10 +187,6 @@ export const removeMember = mutation({
 
     if (args.userId === family.createdBy) {
       throw new Error("Cannot remove the family creator");
-    }
-
-    if (args.userId === user._id && user.role !== "superAdmin") {
-      // Allow self-leave except creator (blocked above)
     }
 
     const membership = await ctx.db

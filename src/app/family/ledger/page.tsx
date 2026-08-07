@@ -13,7 +13,10 @@ export default function FamilyLedgerPage() {
   const courses = useQuery(api.courses.listAvailableForMyFamily);
   const subjects = useQuery(api.subjects.list);
   const createLog = useMutation(api.logs.create);
+  const updateLog = useMutation(api.logs.update);
+  const removeLog = useMutation(api.logs.remove);
   const verify = useMutation(api.logs.verify);
+  const unverify = useMutation(api.logs.unverify);
   const generateUploadUrl = useMutation(api.logs.generateUploadUrl);
 
   const [studentId, setStudentId] = useState("");
@@ -23,6 +26,7 @@ export default function FamilyLedgerPage() {
   const [courseId, setCourseId] = useState("");
   const [subjectId, setSubjectId] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [editLogId, setEditLogId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -52,6 +56,20 @@ export default function FamilyLedgerPage() {
 
     setSaving(true);
     try {
+      if (editLogId) {
+        await updateLog({
+          logId: editLogId as Id<"logs">,
+          entryType,
+          durationMinutes: minutes,
+          notes: notes.trim() || undefined,
+          courseId: courseId ? (courseId as Id<"courses">) : undefined,
+          subjectId: subjectId ? (subjectId as Id<"subjects">) : undefined,
+        });
+        setEditLogId("");
+        setNotes("");
+        return;
+      }
+
       let storageId: Id<"_storage"> | undefined;
       if (file) {
         const uploadUrl = await generateUploadUrl({});
@@ -79,7 +97,7 @@ export default function FamilyLedgerPage() {
       setNotes("");
       setFile(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create log");
+      setError(err instanceof Error ? err.message : "Failed to save log");
     } finally {
       setSaving(false);
     }
@@ -212,8 +230,25 @@ export default function FamilyLedgerPage() {
               disabled={saving}
               className="border border-neutral-900 bg-neutral-900 px-3 py-1.5 text-sm text-white disabled:opacity-50"
             >
-              {saving ? "Saving…" : "Save log"}
+              {saving
+                ? "Saving…"
+                : editLogId
+                  ? "Update log"
+                  : "Save log"}
             </button>
+            {editLogId && (
+              <button
+                type="button"
+                className="ml-2 border border-neutral-400 px-3 py-1.5 text-sm"
+                onClick={() => {
+                  setEditLogId("");
+                  setNotes("");
+                  setDurationMinutes("30");
+                }}
+              >
+                Cancel edit
+              </button>
+            )}
           </form>
 
           <div>
@@ -239,21 +274,65 @@ export default function FamilyLedgerPage() {
                       {log.storageId ? " · file attached" : ""}
                       {log.verifiedByParent ? " · verified" : ""}
                     </span>
-                    {!log.verifiedByParent && (
+                    <span className="flex gap-3 text-xs">
                       <button
                         type="button"
-                        className="text-xs underline"
-                        onClick={() =>
-                          void verify({ logId: log._id }).catch((err) =>
+                        className="underline"
+                        onClick={() => {
+                          setEditLogId(log._id);
+                          setDurationMinutes(String(log.durationMinutes));
+                          setNotes(log.notes ?? "");
+                          setEntryType(log.entryType);
+                          setCourseId(log.courseId ?? "");
+                          setSubjectId(log.subjectId ?? "");
+                        }}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        className="underline text-red-700"
+                        onClick={() => {
+                          if (!window.confirm("Delete this log entry?")) return;
+                          void removeLog({ logId: log._id }).catch((err) =>
                             setError(
                               err instanceof Error ? err.message : "Failed",
                             ),
-                          )
-                        }
+                          );
+                        }}
                       >
-                        Verify
+                        Delete
                       </button>
-                    )}
+                      {!log.verifiedByParent ? (
+                        <button
+                          type="button"
+                          className="underline"
+                          onClick={() =>
+                            void verify({ logId: log._id }).catch((err) =>
+                              setError(
+                                err instanceof Error ? err.message : "Failed",
+                              ),
+                            )
+                          }
+                        >
+                          Verify
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="underline"
+                          onClick={() =>
+                            void unverify({ logId: log._id }).catch((err) =>
+                              setError(
+                                err instanceof Error ? err.message : "Failed",
+                              ),
+                            )
+                          }
+                        >
+                          Unverify
+                        </button>
+                      )}
+                    </span>
                   </li>
                 ))}
               </ul>

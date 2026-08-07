@@ -1,9 +1,11 @@
 "use client";
 
+import { FormEvent, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { useState } from "react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
+
+type SubjectCategory = "stem" | "humanities" | "life" | "applied";
 
 export default function AdminPage() {
   const user = useQuery(api.users.current);
@@ -23,10 +25,46 @@ export default function AdminPage() {
     api.admin.listAcademies,
     user?.role === "superAdmin" ? {} : "skip",
   );
+  const subjects = useQuery(
+    api.subjects.list,
+    user?.role === "superAdmin" ? {} : "skip",
+  );
   const bootstrap = useMutation(api.admin.bootstrapSuperAdmin);
   const promote = useMutation(api.admin.promoteToSuperAdmin);
   const seedSubjects = useMutation(api.subjects.seed);
+  const createSubject = useMutation(api.subjects.create);
+  const updateSubject = useMutation(api.subjects.update);
+  const removeSubject = useMutation(api.subjects.remove);
   const [message, setMessage] = useState<string | null>(null);
+  const [subjectName, setSubjectName] = useState("");
+  const [subjectCategory, setSubjectCategory] =
+    useState<SubjectCategory>("stem");
+  const [editSubjectId, setEditSubjectId] = useState("");
+
+  async function onSubjectSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!subjectName.trim()) return;
+    try {
+      if (editSubjectId) {
+        await updateSubject({
+          subjectId: editSubjectId as Id<"subjects">,
+          name: subjectName.trim(),
+          category: subjectCategory,
+        });
+        setEditSubjectId("");
+        setMessage("Subject updated.");
+      } else {
+        await createSubject({
+          name: subjectName.trim(),
+          category: subjectCategory,
+        });
+        setMessage("Subject created.");
+      }
+      setSubjectName("");
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Failed");
+    }
+  }
 
   if (user === undefined) {
     return <p className="text-sm text-neutral-500">Loading…</p>;
@@ -124,6 +162,98 @@ export default function AdminPage() {
       >
         Seed subjects
       </button>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-medium">Subjects</h2>
+        <form onSubmit={(e) => void onSubjectSubmit(e)} className="flex flex-wrap gap-2">
+          <input
+            className="border border-neutral-300 px-2 py-1.5 text-sm"
+            placeholder="Subject name"
+            value={subjectName}
+            onChange={(e) => setSubjectName(e.target.value)}
+            required
+          />
+          <select
+            className="border border-neutral-300 px-2 py-1.5 text-sm"
+            value={subjectCategory}
+            onChange={(e) =>
+              setSubjectCategory(e.target.value as SubjectCategory)
+            }
+          >
+            <option value="stem">stem</option>
+            <option value="humanities">humanities</option>
+            <option value="life">life</option>
+            <option value="applied">applied</option>
+          </select>
+          <button
+            type="submit"
+            className="border border-neutral-900 bg-neutral-900 px-3 py-1.5 text-sm text-white"
+          >
+            {editSubjectId ? "Save subject" : "Add subject"}
+          </button>
+          {editSubjectId && (
+            <button
+              type="button"
+              className="border border-neutral-400 px-3 py-1.5 text-sm"
+              onClick={() => {
+                setEditSubjectId("");
+                setSubjectName("");
+              }}
+            >
+              Cancel
+            </button>
+          )}
+        </form>
+        <ul className="space-y-1 text-sm">
+          {subjects === undefined ? (
+            <li>Loading…</li>
+          ) : subjects.length === 0 ? (
+            <li className="text-neutral-500">None</li>
+          ) : (
+            subjects.map((s) => (
+              <li
+                key={s._id}
+                className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-100 py-1"
+              >
+                <span>
+                  {s.name} · {s.category}
+                </span>
+                <span className="flex gap-3 text-xs">
+                  <button
+                    type="button"
+                    className="underline"
+                    onClick={() => {
+                      setEditSubjectId(s._id);
+                      setSubjectName(s.name);
+                      setSubjectCategory(s.category);
+                    }}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    className="underline text-red-700"
+                    onClick={() => {
+                      if (!window.confirm(`Delete subject "${s.name}"?`)) {
+                        return;
+                      }
+                      void removeSubject({ subjectId: s._id })
+                        .then(() => setMessage("Subject deleted."))
+                        .catch((err) =>
+                          setMessage(
+                            err instanceof Error ? err.message : "Failed",
+                          ),
+                        );
+                    }}
+                  >
+                    Delete
+                  </button>
+                </span>
+              </li>
+            ))
+          )}
+        </ul>
+      </section>
 
       <section>
         <h2 className="mb-2 text-lg font-medium">Families</h2>

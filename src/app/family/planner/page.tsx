@@ -26,10 +26,13 @@ export default function FamilyPlannerPage() {
   const students = useQuery(api.students.listForMyFamily);
   const courses = useQuery(api.courses.listAvailableForMyFamily);
   const createDraft = useMutation(api.schedules.createDraft);
+  const updateSchedule = useMutation(api.schedules.update);
+  const removeSchedule = useMutation(api.schedules.remove);
   const requestApproval = useMutation(api.schedules.requestApproval);
   const approve = useMutation(api.schedules.approve);
   const requestRevision = useMutation(api.schedules.requestRevision);
   const addItem = useMutation(api.schedules.addItem);
+  const updateItem = useMutation(api.schedules.updateItem);
   const removeItem = useMutation(api.schedules.removeItem);
 
   const [studentId, setStudentId] = useState("");
@@ -38,6 +41,7 @@ export default function FamilyPlannerPage() {
   const [itemMinutes, setItemMinutes] = useState("45");
   const [itemDay, setItemDay] = useState("1");
   const [itemCourse, setItemCourse] = useState("");
+  const [editItemId, setEditItemId] = useState("");
   const [message, setMessage] = useState<string | null>(null);
 
   const selectedStudentId = (studentId || students?.[0]?._id || "") as
@@ -82,6 +86,21 @@ export default function FamilyPlannerPage() {
     e.preventDefault();
     if (!scheduleId || !itemTitle.trim()) return;
     try {
+      if (editItemId) {
+        await updateItem({
+          itemId: editItemId as Id<"scheduleItems">,
+          title: itemTitle.trim(),
+          plannedMinutes: Number(itemMinutes) || 30,
+          dayOfWeek: Number(itemDay),
+          courseId: itemCourse
+            ? (itemCourse as Id<"courses">)
+            : undefined,
+        });
+        setEditItemId("");
+        setItemTitle("");
+        setMessage("Item updated.");
+        return;
+      }
       await addItem({
         scheduleId,
         title: itemTitle.trim(),
@@ -222,6 +241,62 @@ export default function FamilyPlannerPage() {
                       Request revision
                     </button>
                   )}
+                  {s.status !== "approved" && (
+                    <button
+                      type="button"
+                      className="text-xs underline"
+                      onClick={() => {
+                        const start = window.prompt(
+                          "Week start (YYYY-MM-DD)",
+                          s.weekStart,
+                        );
+                        if (!start) return;
+                        const end = window.prompt(
+                          "Week end (YYYY-MM-DD)",
+                          s.weekEnd,
+                        );
+                        if (!end) return;
+                        void updateSchedule({
+                          scheduleId: s._id,
+                          weekStart: start,
+                          weekEnd: end,
+                        })
+                          .then(() => setMessage("Schedule dates updated."))
+                          .catch((err) =>
+                            setMessage(
+                              err instanceof Error ? err.message : "Failed",
+                            ),
+                          );
+                      }}
+                    >
+                      Edit dates
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="text-xs underline text-red-700"
+                    onClick={() => {
+                      if (
+                        !window.confirm(
+                          "Delete this schedule and all its items?",
+                        )
+                      ) {
+                        return;
+                      }
+                      void removeSchedule({ scheduleId: s._id })
+                        .then(() => {
+                          if (activeSchedule === s._id) setActiveSchedule("");
+                          setMessage("Schedule deleted.");
+                        })
+                        .catch((err) =>
+                          setMessage(
+                            err instanceof Error ? err.message : "Failed",
+                          ),
+                        );
+                    }}
+                  >
+                    Delete
+                  </button>
                 </li>
               ))
             )}
@@ -232,7 +307,9 @@ export default function FamilyPlannerPage() {
               onSubmit={(e) => void onAddItem(e)}
               className="space-y-2 border-t border-neutral-200 pt-4"
             >
-              <h2 className="text-lg font-medium">Add schedule item</h2>
+              <h2 className="text-lg font-medium">
+                {editItemId ? "Edit schedule item" : "Add schedule item"}
+              </h2>
               <input
                 className="w-full border border-neutral-300 px-2 py-1.5 text-sm"
                 placeholder="Title"
@@ -272,12 +349,26 @@ export default function FamilyPlannerPage() {
                   ))}
                 </select>
               </div>
-              <button
-                type="submit"
-                className="border border-neutral-400 px-3 py-1.5 text-sm"
-              >
-                Add item
-              </button>
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  className="border border-neutral-400 px-3 py-1.5 text-sm"
+                >
+                  {editItemId ? "Save item" : "Add item"}
+                </button>
+                {editItemId && (
+                  <button
+                    type="button"
+                    className="border border-neutral-400 px-3 py-1.5 text-sm"
+                    onClick={() => {
+                      setEditItemId("");
+                      setItemTitle("");
+                    }}
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
             </form>
           )}
 
@@ -302,22 +393,41 @@ export default function FamilyPlannerPage() {
                         {item.title} · {item.plannedMinutes} min
                       </span>
                       {active?.status !== "approved" && (
-                        <button
-                          type="button"
-                          className="text-xs underline"
-                          onClick={() =>
-                            void removeItem({ itemId: item._id }).catch(
-                              (err) =>
-                                setMessage(
-                                  err instanceof Error
-                                    ? err.message
-                                    : "Failed",
-                                ),
-                            )
-                          }
-                        >
-                          Remove
-                        </button>
+                        <span className="flex gap-3 text-xs">
+                          <button
+                            type="button"
+                            className="underline"
+                            onClick={() => {
+                              setEditItemId(item._id);
+                              setItemTitle(item.title);
+                              setItemMinutes(String(item.plannedMinutes));
+                              setItemDay(
+                                item.dayOfWeek !== undefined
+                                  ? String(item.dayOfWeek)
+                                  : "1",
+                              );
+                              setItemCourse(item.courseId ?? "");
+                            }}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="underline text-red-700"
+                            onClick={() =>
+                              void removeItem({ itemId: item._id }).catch(
+                                (err) =>
+                                  setMessage(
+                                    err instanceof Error
+                                      ? err.message
+                                      : "Failed",
+                                  ),
+                              )
+                            }
+                          >
+                            Remove
+                          </button>
+                        </span>
                       )}
                     </li>
                   ))

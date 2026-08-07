@@ -13,9 +13,16 @@ export default function AcademyDashboardPage() {
   const subjects = useQuery(api.subjects.list);
   const createAcademy = useMutation(api.academies.create);
   const updateAcademy = useMutation(api.academies.update);
+  const removeAcademy = useMutation(api.academies.remove);
   const createCourse = useMutation(api.courses.create);
+  const updateCourse = useMutation(api.courses.update);
+  const removeCourse = useMutation(api.courses.remove);
   const addModule = useMutation(api.courses.addModule);
+  const updateModule = useMutation(api.courses.updateModule);
+  const removeModule = useMutation(api.courses.removeModule);
   const addLesson = useMutation(api.courses.addLesson);
+  const updateLesson = useMutation(api.courses.updateLesson);
+  const removeLesson = useMutation(api.courses.removeLesson);
   const seedSubjects = useMutation(api.subjects.seed);
   const router = useRouter();
 
@@ -185,6 +192,32 @@ export default function AcademyDashboardPage() {
         >
           {academyId ? "Save profile" : "Create"}
         </button>
+        {academyId && (
+          <button
+            type="button"
+            className="ml-2 border border-red-700 px-3 py-1.5 text-sm text-red-700"
+            onClick={() => {
+              if (
+                !window.confirm(
+                  "Delete this academy, its courses, and all subscriptions?",
+                )
+              ) {
+                return;
+              }
+              void removeAcademy({ academyId })
+                .then(() => {
+                  setSelectedAcademy("");
+                  setSelectedCourse("");
+                  setMessage("Academy deleted.");
+                })
+                .catch((err) =>
+                  setMessage(err instanceof Error ? err.message : "Failed"),
+                );
+            }}
+          >
+            Delete academy
+          </button>
+        )}
       </form>
 
       {academyId && (
@@ -220,7 +253,10 @@ export default function AcademyDashboardPage() {
 
             <ul className="text-sm">
               {(courses ?? []).map((c) => (
-                <li key={c._id} className="border-b border-neutral-100 py-1">
+                <li
+                  key={c._id}
+                  className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-100 py-1"
+                >
                   <button
                     type="button"
                     className={
@@ -230,6 +266,53 @@ export default function AcademyDashboardPage() {
                   >
                     {c.title}
                   </button>
+                  <span className="flex gap-3 text-xs">
+                    <button
+                      type="button"
+                      className="underline"
+                      onClick={() => {
+                        const next = window.prompt("Course title", c.title);
+                        if (!next?.trim()) return;
+                        void updateCourse({
+                          courseId: c._id,
+                          title: next.trim(),
+                        })
+                          .then(() => setMessage("Course updated."))
+                          .catch((err) =>
+                            setMessage(
+                              err instanceof Error ? err.message : "Failed",
+                            ),
+                          );
+                      }}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="underline text-red-700"
+                      onClick={() => {
+                        if (
+                          !window.confirm(
+                            `Delete course "${c.title}" and all modules/lessons?`,
+                          )
+                        ) {
+                          return;
+                        }
+                        void removeCourse({ courseId: c._id })
+                          .then(() => {
+                            if (selectedCourse === c._id) setSelectedCourse("");
+                            setMessage("Course deleted.");
+                          })
+                          .catch((err) =>
+                            setMessage(
+                              err instanceof Error ? err.message : "Failed",
+                            ),
+                          );
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </span>
                 </li>
               ))}
             </ul>
@@ -239,10 +322,106 @@ export default function AcademyDashboardPage() {
                 <ul className="text-sm">
                   {structure.modules.map(({ module, lessons }) => (
                     <li key={module._id} className="mb-2">
-                      <p className="font-medium">{module.title}</p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-medium">{module.title}</p>
+                        <button
+                          type="button"
+                          className="text-xs underline"
+                          onClick={() => {
+                            const next = window.prompt(
+                              "Module title",
+                              module.title,
+                            );
+                            if (!next?.trim()) return;
+                            void updateModule({
+                              moduleId: module._id,
+                              title: next.trim(),
+                            })
+                              .then(() => setMessage("Module updated."))
+                              .catch((err) =>
+                                setMessage(
+                                  err instanceof Error ? err.message : "Failed",
+                                ),
+                              );
+                          }}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          className="text-xs underline text-red-700"
+                          onClick={() => {
+                            if (
+                              !window.confirm(
+                                `Delete module "${module.title}"?`,
+                              )
+                            ) {
+                              return;
+                            }
+                            void removeModule({ moduleId: module._id })
+                              .then(() => setMessage("Module deleted."))
+                              .catch((err) =>
+                                setMessage(
+                                  err instanceof Error ? err.message : "Failed",
+                                ),
+                              );
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </div>
                       <ul className="ml-3 list-disc">
                         {lessons.map((l) => (
-                          <li key={l._id}>{l.title}</li>
+                          <li key={l._id} className="flex flex-wrap gap-2">
+                            <span>{l.title}</span>
+                            <button
+                              type="button"
+                              className="text-xs underline"
+                              onClick={() => {
+                                const next = window.prompt(
+                                  "Lesson title",
+                                  l.title,
+                                );
+                                if (!next?.trim()) return;
+                                void updateLesson({
+                                  lessonId: l._id,
+                                  title: next.trim(),
+                                })
+                                  .then(() => setMessage("Lesson updated."))
+                                  .catch((err) =>
+                                    setMessage(
+                                      err instanceof Error
+                                        ? err.message
+                                        : "Failed",
+                                    ),
+                                  );
+                              }}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              className="text-xs underline text-red-700"
+                              onClick={() => {
+                                if (
+                                  !window.confirm(`Delete lesson "${l.title}"?`)
+                                ) {
+                                  return;
+                                }
+                                void removeLesson({ lessonId: l._id })
+                                  .then(() => setMessage("Lesson deleted."))
+                                  .catch((err) =>
+                                    setMessage(
+                                      err instanceof Error
+                                        ? err.message
+                                        : "Failed",
+                                    ),
+                                  );
+                              }}
+                            >
+                              Delete
+                            </button>
+                          </li>
                         ))}
                       </ul>
                     </li>

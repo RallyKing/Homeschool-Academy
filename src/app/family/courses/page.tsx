@@ -12,8 +12,14 @@ export default function FamilyCoursesPage() {
   const courses = useQuery(api.courses.listForFamily, family ? {} : "skip");
   const seedSubjects = useMutation(api.subjects.seed);
   const createCourse = useMutation(api.courses.create);
+  const updateCourse = useMutation(api.courses.update);
+  const removeCourse = useMutation(api.courses.remove);
   const addModule = useMutation(api.courses.addModule);
+  const updateModule = useMutation(api.courses.updateModule);
+  const removeModule = useMutation(api.courses.removeModule);
   const addLesson = useMutation(api.courses.addLesson);
+  const updateLesson = useMutation(api.courses.updateLesson);
+  const removeLesson = useMutation(api.courses.removeLesson);
 
   const [title, setTitle] = useState("");
   const [type, setType] = useState<"native" | "external">("native");
@@ -21,6 +27,7 @@ export default function FamilyCoursesPage() {
   const [externalSource, setExternalSource] = useState("");
   const [description, setDescription] = useState("");
   const [selectedCourse, setSelectedCourse] = useState("");
+  const [editingCourse, setEditingCourse] = useState(false);
   const [moduleTitle, setModuleTitle] = useState("");
   const [lessonTitle, setLessonTitle] = useState("");
   const [lessonModuleId, setLessonModuleId] = useState("");
@@ -47,6 +54,22 @@ export default function FamilyCoursesPage() {
       const sid = (subjectId || subjects?.[0]?._id) as Id<"subjects"> | undefined;
       if (!sid) {
         setMessage("Seed subjects first.");
+        return;
+      }
+      if (editingCourse && selectedCourse) {
+        await updateCourse({
+          courseId: selectedCourse as Id<"courses">,
+          title: title.trim(),
+          description: description.trim() || undefined,
+          subjectId: sid,
+          externalSourceName:
+            type === "external" ? externalSource.trim() : undefined,
+        });
+        setEditingCourse(false);
+        setTitle("");
+        setDescription("");
+        setExternalSource("");
+        setMessage("Course updated.");
         return;
       }
       const id = await createCourse({
@@ -133,18 +156,22 @@ export default function FamilyCoursesPage() {
       </div>
 
       <form onSubmit={(e) => void onCreate(e)} className="space-y-3">
-        <h2 className="text-lg font-medium">New course</h2>
-        <label className="block text-sm">
-          Type
-          <select
-            className="mt-1 w-full border border-neutral-300 px-2 py-1.5"
-            value={type}
-            onChange={(e) => setType(e.target.value as "native" | "external")}
-          >
-            <option value="native">Native (modules & lessons)</option>
-            <option value="external">External tracker</option>
-          </select>
-        </label>
+        <h2 className="text-lg font-medium">
+          {editingCourse ? "Edit course" : "New course"}
+        </h2>
+        {!editingCourse && (
+          <label className="block text-sm">
+            Type
+            <select
+              className="mt-1 w-full border border-neutral-300 px-2 py-1.5"
+              value={type}
+              onChange={(e) => setType(e.target.value as "native" | "external")}
+            >
+              <option value="native">Native (modules & lessons)</option>
+              <option value="external">External tracker</option>
+            </select>
+          </label>
+        )}
         <label className="block text-sm">
           Title
           <input
@@ -189,27 +216,43 @@ export default function FamilyCoursesPage() {
             onChange={(e) => setDescription(e.target.value)}
           />
         </label>
-        <button
-          type="submit"
-          className="border border-neutral-900 bg-neutral-900 px-3 py-1.5 text-sm text-white"
-        >
-          Create course
-        </button>
-        {(!subjects || subjects.length === 0) && (
+        <div className="flex flex-wrap gap-2">
           <button
-            type="button"
-            className="ml-2 text-sm underline"
-            onClick={() =>
-              void seedSubjects()
-                .then((r) => setMessage(`Seeded ${r.created} subjects`))
-                .catch((err) =>
-                  setMessage(err instanceof Error ? err.message : "Failed"),
-                )
-            }
+            type="submit"
+            className="border border-neutral-900 bg-neutral-900 px-3 py-1.5 text-sm text-white"
           >
-            Seed subjects
+            {editingCourse ? "Save course" : "Create course"}
           </button>
-        )}
+          {editingCourse && (
+            <button
+              type="button"
+              className="border border-neutral-400 px-3 py-1.5 text-sm"
+              onClick={() => {
+                setEditingCourse(false);
+                setTitle("");
+                setDescription("");
+                setExternalSource("");
+              }}
+            >
+              Cancel
+            </button>
+          )}
+          {(!subjects || subjects.length === 0) && (
+            <button
+              type="button"
+              className="text-sm underline"
+              onClick={() =>
+                void seedSubjects()
+                  .then((r) => setMessage(`Seeded ${r.created} subjects`))
+                  .catch((err) =>
+                    setMessage(err instanceof Error ? err.message : "Failed"),
+                  )
+              }
+            >
+              Seed subjects
+            </button>
+          )}
+        </div>
       </form>
 
       <section className="space-y-2">
@@ -221,7 +264,10 @@ export default function FamilyCoursesPage() {
             <li className="text-neutral-500">None yet.</li>
           ) : (
             courses.map((c) => (
-              <li key={c._id} className="border-b border-neutral-100 py-2">
+              <li
+                key={c._id}
+                className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-100 py-2"
+              >
                 <button
                   type="button"
                   className={`text-left ${selectedCourse === c._id ? "font-medium underline" : ""}`}
@@ -230,6 +276,51 @@ export default function FamilyCoursesPage() {
                   {c.title} · {c.type}
                   {c.externalSourceName ? ` (${c.externalSourceName})` : ""}
                 </button>
+                <span className="flex gap-3 text-xs">
+                  <button
+                    type="button"
+                    className="underline"
+                    onClick={() => {
+                      setSelectedCourse(c._id);
+                      setEditingCourse(true);
+                      setTitle(c.title);
+                      setType(c.type);
+                      setSubjectId(c.subjectId);
+                      setDescription(c.description ?? "");
+                      setExternalSource(c.externalSourceName ?? "");
+                    }}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    className="underline text-red-700"
+                    onClick={() => {
+                      if (
+                        !window.confirm(
+                          `Delete course "${c.title}" and all modules/lessons?`,
+                        )
+                      ) {
+                        return;
+                      }
+                      void removeCourse({ courseId: c._id })
+                        .then(() => {
+                          if (selectedCourse === c._id) {
+                            setSelectedCourse("");
+                            setEditingCourse(false);
+                          }
+                          setMessage("Course deleted.");
+                        })
+                        .catch((err) =>
+                          setMessage(
+                            err instanceof Error ? err.message : "Failed",
+                          ),
+                        );
+                    }}
+                  >
+                    Delete
+                  </button>
+                </span>
               </li>
             ))
           )}
@@ -247,14 +338,110 @@ export default function FamilyCoursesPage() {
                 ) : (
                   structure.modules.map(({ module, lessons }) => (
                     <li key={module._id}>
-                      <p className="font-medium">{module.title}</p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-medium">{module.title}</p>
+                        <button
+                          type="button"
+                          className="text-xs underline"
+                          onClick={() => {
+                            const next = window.prompt(
+                              "Module title",
+                              module.title,
+                            );
+                            if (!next?.trim()) return;
+                            void updateModule({
+                              moduleId: module._id,
+                              title: next.trim(),
+                            })
+                              .then(() => setMessage("Module updated."))
+                              .catch((err) =>
+                                setMessage(
+                                  err instanceof Error ? err.message : "Failed",
+                                ),
+                              );
+                          }}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          className="text-xs underline text-red-700"
+                          onClick={() => {
+                            if (
+                              !window.confirm(
+                                `Delete module "${module.title}" and its lessons?`,
+                              )
+                            ) {
+                              return;
+                            }
+                            void removeModule({ moduleId: module._id })
+                              .then(() => setMessage("Module deleted."))
+                              .catch((err) =>
+                                setMessage(
+                                  err instanceof Error ? err.message : "Failed",
+                                ),
+                              );
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </div>
                       <ul className="ml-3 list-disc text-neutral-700">
                         {lessons.map((l) => (
-                          <li key={l._id}>
-                            {l.title}
-                            {l.estimatedMinutes
-                              ? ` (${l.estimatedMinutes} min)`
-                              : ""}
+                          <li key={l._id} className="flex flex-wrap gap-2">
+                            <span>
+                              {l.title}
+                              {l.estimatedMinutes
+                                ? ` (${l.estimatedMinutes} min)`
+                                : ""}
+                            </span>
+                            <button
+                              type="button"
+                              className="text-xs underline"
+                              onClick={() => {
+                                const next = window.prompt(
+                                  "Lesson title",
+                                  l.title,
+                                );
+                                if (!next?.trim()) return;
+                                void updateLesson({
+                                  lessonId: l._id,
+                                  title: next.trim(),
+                                })
+                                  .then(() => setMessage("Lesson updated."))
+                                  .catch((err) =>
+                                    setMessage(
+                                      err instanceof Error
+                                        ? err.message
+                                        : "Failed",
+                                    ),
+                                  );
+                              }}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              className="text-xs underline text-red-700"
+                              onClick={() => {
+                                if (
+                                  !window.confirm(`Delete lesson "${l.title}"?`)
+                                ) {
+                                  return;
+                                }
+                                void removeLesson({ lessonId: l._id })
+                                  .then(() => setMessage("Lesson deleted."))
+                                  .catch((err) =>
+                                    setMessage(
+                                      err instanceof Error
+                                        ? err.message
+                                        : "Failed",
+                                    ),
+                                  );
+                              }}
+                            >
+                              Delete
+                            </button>
                           </li>
                         ))}
                       </ul>
