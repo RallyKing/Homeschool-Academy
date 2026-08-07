@@ -68,6 +68,11 @@ export default function FamilyProgressPage() {
                     Progress dashboard
                   </Button>
                 </Link>
+                <Link href={`/family/students/${s._id}`}>
+                  <Button variant="secondary" size="sm">
+                    Manage
+                  </Button>
+                </Link>
               </li>
             ))}
           </ul>

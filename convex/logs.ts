@@ -90,7 +90,7 @@ export const create = mutation({
       type: "log_created",
       title: "Learning log added",
       body: `${student.displayName} logged ${args.durationMinutes} minutes (${args.entryType.replaceAll("_", " ")}).`,
-      href: "/family/ledger",
+      href: `/family/students/${student._id}?tab=logs`,
       createdBy: user._id,
       sourceTable: "logs",
       sourceId: logId,

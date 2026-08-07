@@ -8,10 +8,9 @@ import {
 } from "./_generated/server";
 import { alertStudent } from "./lib/alerts";
 import {
-  assertParentOfStudent,
+  requireFamilyAccess,
   getCurrentUser,
   getFamilyMembership,
-  requireFamilyAccess,
   requireStudentFamilyAccess,
 } from "./lib/auth";
 import { awardProgress } from "./lib/gamificationCore";
@@ -543,7 +542,11 @@ export const moderateDeleteMessage = mutation({
   handler: async (ctx, args) => {
     const message = await ctx.db.get("socialMessages", args.messageId);
     if (!message) throw new Error("Message not found");
-    const { user } = await assertParentOfStudent(ctx, message.fromStudentId);
+    // Parent of either party (same family) may moderate cheers on a student profile.
+    const { user } = await requireFamilyAccess(ctx, message.familyId);
+    if (user.role !== "parent" && user.role !== "superAdmin") {
+      throw new Error("Only parents can moderate cheers");
+    }
     if (message.deletedAt) return null;
     await ctx.db.patch("socialMessages", args.messageId, {
       deletedAt: Date.now(),
@@ -935,6 +938,75 @@ export const listRecentForStudent = query({
       out.push({
         message,
         fromName: from?.displayName ?? "Sibling",
+        stickerEmoji,
+      });
+    }
+    return out;
+  },
+});
+
+/** Parent moderation: cheers sent or received by this student. */
+export const listInvolvingStudent = query({
+  args: {
+    studentId: v.id("students"),
+    limit: v.optional(v.number()),
+  },
+  returns: v.array(
+    v.object({
+      message: socialMessageDocValidator,
+      fromName: v.string(),
+      toName: v.string(),
+      direction: v.union(v.literal("sent"), v.literal("received")),
+      stickerEmoji: v.optional(v.string()),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    const { user } = await requireStudentFamilyAccess(ctx, args.studentId);
+    if (user.role !== "parent" && user.role !== "superAdmin") {
+      throw new Error("Only parents can moderate student cheers");
+    }
+
+    const limit = Math.min(args.limit ?? 40, 80);
+    const received = await ctx.db
+      .query("socialMessages")
+      .withIndex("by_to_and_createdAt", (q) =>
+        q.eq("toStudentId", args.studentId),
+      )
+      .order("desc")
+      .take(limit);
+    const sent = await ctx.db
+      .query("socialMessages")
+      .withIndex("by_from", (q) => q.eq("fromStudentId", args.studentId))
+      .take(limit);
+
+    const byId = new Map<string, Doc<"socialMessages">>();
+    for (const m of [...received, ...sent]) {
+      if (m.deletedAt) continue;
+      byId.set(m._id, m);
+    }
+
+    const merged = [...byId.values()].sort(
+      (a, b) => b.createdAt - a.createdAt,
+    );
+    const slice = merged.slice(0, limit);
+
+    const out = [];
+    for (const message of slice) {
+      const from = await ctx.db.get("students", message.fromStudentId);
+      const to = await ctx.db.get("students", message.toStudentId);
+      let stickerEmoji: string | undefined;
+      if (message.stickerKey) {
+        const sticker = await findStickerByKey(ctx, message.stickerKey);
+        stickerEmoji = sticker?.emoji;
+      }
+      out.push({
+        message,
+        fromName: from?.displayName ?? "Student",
+        toName: to?.displayName ?? "Student",
+        direction:
+          message.fromStudentId === args.studentId
+            ? ("sent" as const)
+            : ("received" as const),
         stickerEmoji,
       });
     }

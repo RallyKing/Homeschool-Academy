@@ -399,6 +399,11 @@ function FamilyDashboardInner() {
                         </div>
                       </div>
                       <span className="flex flex-wrap items-center gap-1.5">
+                        <Link href={`/family/students/${s._id}`}>
+                          <Button variant="secondary" size="sm">
+                            Manage
+                          </Button>
+                        </Link>
                         <Link href={`/family/progress/${s._id}`}>
                           <Button variant="ghost" size="sm">
                             Progress
@@ -410,11 +415,11 @@ function FamilyDashboardInner() {
                           </Button>
                         </Link>
                         <Button
-                          variant="secondary"
+                          variant="ghost"
                           size="sm"
                           onClick={() => openEditStudentModal(s)}
                         >
-                          Edit
+                          Quick edit
                         </Button>
                         <Button
                           variant="danger"

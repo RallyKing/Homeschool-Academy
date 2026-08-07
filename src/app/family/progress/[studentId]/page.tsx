@@ -2,12 +2,20 @@
 
 import Link from "next/link";
 import { use } from "react";
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
+import { ParentStudentLogsPanel } from "@/components/ParentStudentLogsPanel";
 import { StudentProgressCharts } from "@/components/StudentProgressCharts";
 import { StudentAvatar } from "@/components/StudentAvatar";
-import { Button, PageHeader, Card, Section, Badge, EmptyState } from "@/components/ui";
+import {
+  Button,
+  PageHeader,
+  Card,
+  Section,
+  Badge,
+  EmptyState,
+} from "@/components/ui";
 
 export default function StudentProgressDashboardPage({
   params,
@@ -26,6 +34,7 @@ export default function StudentProgressDashboardPage({
     studentId,
     limit: 8,
   });
+  const removeAccolade = useMutation(api.gamification.removeAccolade);
 
   if (student === undefined) {
     return <p className="text-sm text-[var(--muted)]">Loading…</p>;
@@ -55,13 +64,23 @@ export default function StudentProgressDashboardPage({
             ← Progress
           </Button>
         </Link>
+        <Link href={`/family/students/${student._id}`}>
+          <Button variant="secondary" size="sm">
+            Manage student
+          </Button>
+        </Link>
+        <Link href={`/family/students/${student._id}?tab=logs`}>
+          <Button variant="secondary" size="sm">
+            Edit logs
+          </Button>
+        </Link>
         <Link href="/family/dashboard">
           <Button variant="ghost" size="sm">
             Family
           </Button>
         </Link>
         <Link href={`/student/dashboard?as=${student._id}`}>
-          <Button variant="secondary" size="sm">
+          <Button variant="ghost" size="sm">
             View as student
           </Button>
         </Link>
@@ -83,7 +102,7 @@ export default function StudentProgressDashboardPage({
               {student.displayName}
             </h1>
             <p className="mt-2 text-base text-[var(--muted)] leading-relaxed">
-              {`${student.academicLevel ?? "Student"} · learning charts and totals`}
+              {`${student.academicLevel ?? "Student"} · learning charts, logs, and parent controls`}
             </p>
           </div>
         </div>
@@ -102,9 +121,9 @@ export default function StudentProgressDashboardPage({
                 {gamification.profile.currentStreak}d streak
               </p>
             </div>
-            <Link href="/family/rewards">
+            <Link href={`/family/students/${student._id}?tab=rewards`}>
               <Button size="sm" variant="secondary">
-                Rewards
+                Manage rewards
               </Button>
             </Link>
           </div>
@@ -127,7 +146,15 @@ export default function StudentProgressDashboardPage({
 
       <Section title="Accolades">
         {!accolades || accolades.length === 0 ? (
-          <EmptyState>No accolades yet.</EmptyState>
+          <EmptyState>
+            No accolades yet.{" "}
+            <Link
+              href={`/family/students/${student._id}?tab=rewards`}
+              className="underline"
+            >
+              Grant one
+            </Link>
+          </EmptyState>
         ) : (
           <div className="space-y-2">
             {accolades.map((a) => (
@@ -138,6 +165,23 @@ export default function StudentProgressDashboardPage({
                     <p className="text-sm text-[var(--muted)]">{a.message}</p>
                   ) : null}
                 </div>
+                <span className="flex flex-wrap gap-2">
+                  <Link href={`/family/students/${student._id}?tab=rewards`}>
+                    <Button variant="ghost" size="sm">
+                      Edit
+                    </Button>
+                  </Link>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={() => {
+                      if (!window.confirm("Delete this accolade?")) return;
+                      void removeAccolade({ accoladeId: a._id });
+                    }}
+                  >
+                    Delete
+                  </Button>
+                </span>
               </div>
             ))}
           </div>
@@ -150,6 +194,13 @@ export default function StudentProgressDashboardPage({
           defaultRangeDays={30}
         />
       </Card>
+
+      <ParentStudentLogsPanel
+        studentId={student._id}
+        showCreate
+        limit={20}
+        title="Logs on this profile"
+      />
     </div>
   );
 }

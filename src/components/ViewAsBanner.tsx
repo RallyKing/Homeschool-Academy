@@ -61,12 +61,20 @@ export function ViewAsBanner() {
             </span>
           </span>
         </span>
-        <Link
-          href="/family/dashboard"
-          className="rounded-[var(--radius-sm)] border border-[var(--warning)]/40 bg-[var(--surface)] px-3 py-1 text-sm font-medium transition-colors hover:bg-[var(--surface-2)]"
-        >
-          Exit
-        </Link>
+        <span className="flex flex-wrap items-center gap-2">
+          <Link
+            href={`/family/students/${context.student._id}`}
+            className="rounded-[var(--radius-sm)] border border-[var(--warning)]/40 bg-[var(--surface)] px-3 py-1 text-sm font-medium transition-colors hover:bg-[var(--surface-2)]"
+          >
+            Manage
+          </Link>
+          <Link
+            href="/family/dashboard"
+            className="rounded-[var(--radius-sm)] border border-[var(--warning)]/40 bg-[var(--surface)] px-3 py-1 text-sm font-medium transition-colors hover:bg-[var(--surface-2)]"
+          >
+            Exit
+          </Link>
+        </span>
       </Container>
     </div>
   );
