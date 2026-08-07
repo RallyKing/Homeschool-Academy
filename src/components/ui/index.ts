@@ -14,5 +14,7 @@ export {
   Message,
   LinkButton,
 } from "./Section";
+export { Breadcrumbs } from "./Breadcrumbs";
+export type { BreadcrumbsProps } from "./Breadcrumbs";
 export { Tabs, TabPanel } from "./Tabs";
 export type { TabItem } from "./Tabs";

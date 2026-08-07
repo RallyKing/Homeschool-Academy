@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { ConvexAuthNextjsServerProvider } from "@convex-dev/auth/nextjs/server";
 import { Plus_Jakarta_Sans } from "next/font/google";
 import { Suspense } from "react";
+import { BreadcrumbBar } from "@/components/BreadcrumbBar";
 import { ConvexClientProvider } from "@/components/ConvexClientProvider";
 import { Nav } from "@/components/Nav";
 import { PwaRegister } from "@/components/PwaRegister";
@@ -71,6 +72,9 @@ export default function RootLayout({
               <WhatsNewBanner />
             </Suspense>
             <main className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
+              <Suspense fallback={null}>
+                <BreadcrumbBar />
+              </Suspense>
               {children}
             </main>
           </ConvexClientProvider>
