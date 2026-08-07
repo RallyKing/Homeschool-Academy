@@ -161,7 +161,45 @@ export async function assertParentOfStudent(
   return { user, student, membership };
 }
 
-/** Family access OR linked student belonging to that family */
+/**
+ * True when the user may view/participate on a family's Cheer Wall:
+ * family member, linked student, or teacher at an academy the family
+ * actively subscribes to.
+ */
+export async function userHasFeedCircleAccess(
+  ctx: Ctx,
+  familyId: Id<"families">,
+  user: Doc<"users">,
+): Promise<boolean> {
+  if (user.role === "superAdmin") return true;
+
+  const membership = await getFamilyMembership(ctx, familyId, user._id);
+  if (membership) return true;
+
+  const linked = await ctx.db
+    .query("students")
+    .withIndex("by_user", (q) => q.eq("userId", user._id))
+    .first();
+  if (linked && linked.familyId === familyId) return true;
+
+  const academyMemberships = await ctx.db
+    .query("academyMembers")
+    .withIndex("by_user", (q) => q.eq("userId", user._id))
+    .collect();
+  for (const am of academyMemberships) {
+    const sub = await ctx.db
+      .query("familyAcademySubscriptions")
+      .withIndex("by_family_and_academy", (q) =>
+        q.eq("familyId", familyId).eq("academyId", am.academyId),
+      )
+      .unique();
+    if (sub && sub.status === "active") return true;
+  }
+
+  return false;
+}
+
+/** Family access OR linked student belonging to that family OR subscribed academy teacher */
 export async function requireFamilyReadAccess(
   ctx: Ctx,
   familyId: Id<"families">,
@@ -172,25 +210,19 @@ export async function requireFamilyReadAccess(
     throw new Error("Family not found");
   }
 
-  if (user.role === "superAdmin") {
-    return user;
-  }
-
-  const membership = await getFamilyMembership(ctx, familyId, user._id);
-  if (membership) {
-    return user;
-  }
-
-  const linked = await ctx.db
-    .query("students")
-    .withIndex("by_user", (q) => q.eq("userId", user._id))
-    .first();
-
-  if (linked && linked.familyId === familyId) {
+  if (await userHasFeedCircleAccess(ctx, familyId, user)) {
     return user;
   }
 
   throw new Error("Unauthorized: not a member of this family");
+}
+
+/** Same circle as read access — for react / comment / cheer participation. */
+export async function requireFeedCircleAccess(
+  ctx: Ctx,
+  familyId: Id<"families">,
+): Promise<Doc<"users">> {
+  return await requireFamilyReadAccess(ctx, familyId);
 }
 
 export async function getPrimaryFamilyForUser(

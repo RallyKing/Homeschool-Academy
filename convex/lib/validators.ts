@@ -141,6 +141,9 @@ export const alertTypeValidator = v.union(
   v.literal("reward_redeemed"),
   v.literal("accolade_awarded"),
   v.literal("kudos_received"),
+  v.literal("feed_comment"),
+  v.literal("feed_reaction"),
+  v.literal("feed_recheer"),
   v.literal("general"),
 );
 

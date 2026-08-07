@@ -6,6 +6,7 @@ import {
   getCurrentUser,
   getPrimaryFamilyForUser,
   requireFamilyAccess,
+  requireFeedCircleAccess,
   requireRole,
   requireStudentFamilyAccess,
 } from "./lib/auth";
@@ -32,7 +33,7 @@ export const listForFamily = query({
   args: { familyId: v.id("families") },
   returns: v.array(studentDocValidator),
   handler: async (ctx, args) => {
-    await requireFamilyAccess(ctx, args.familyId);
+    await requireFeedCircleAccess(ctx, args.familyId);
     return await ctx.db
       .query("students")
       .withIndex("by_family", (q) => q.eq("familyId", args.familyId))

@@ -2,6 +2,7 @@
 
 import { FormEvent, Suspense, useEffect, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
@@ -210,9 +211,16 @@ function AcademyDashboardInner() {
         title="Dashboard"
         description="Publish courses and see which families have subscribed."
         actions={
-          <Button size="sm" onClick={openCreateAcademy}>
-            New academy
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Link href="/academy/cheers">
+              <Button size="sm" variant="secondary">
+                Student cheers
+              </Button>
+            </Link>
+            <Button size="sm" onClick={openCreateAcademy}>
+              New academy
+            </Button>
+          </div>
         }
       />
 

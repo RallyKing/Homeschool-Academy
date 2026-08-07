@@ -111,6 +111,7 @@ const navByRole: Record<string, NavEntry[]> = {
   ],
   teacher: [
     { kind: "link", link: { href: "/academy/dashboard", label: "Academy" } },
+    { kind: "link", link: { href: "/academy/cheers", label: "Student cheers" } },
     { kind: "link", link: { href: "/alerts", label: "Alerts" } },
     { kind: "group", group: accountGroup },
   ],
@@ -189,10 +190,12 @@ function NavDropdown({
   group,
   pathname,
   resolveHref,
+  wallUnread,
 }: {
   group: NavGroup;
   pathname: string;
   resolveHref: (href: string) => string;
+  wallUnread?: number | null;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -247,6 +250,10 @@ function NavDropdown({
             const href = resolveHref(item.href);
             const itemActive =
               pathname === item.href || pathname.startsWith(`${item.href}/`);
+            const showWallBadge =
+              wallUnread != null &&
+              wallUnread > 0 &&
+              (item.href === "/family/cheers" || item.href === "/student/social");
             return (
               <Link
                 key={item.href}
@@ -254,13 +261,18 @@ function NavDropdown({
                 href={href}
                 onClick={() => setOpen(false)}
                 className={cn(
-                  "hover-fade block px-3.5 py-2.5 text-sm",
+                  "hover-fade flex items-center justify-between gap-2 px-3.5 py-2.5 text-sm",
                   itemActive
                     ? "bg-[var(--accent-soft)] font-medium text-[var(--accent)]"
                     : "text-[var(--foreground)] hover:bg-[var(--surface-2)]",
                 )}
               >
-                {item.label}
+                <span>{item.label}</span>
+                {showWallBadge ? (
+                  <span className="rounded-full bg-[var(--accent)] px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                    {wallUnread > 9 ? "9+" : wallUnread}
+                  </span>
+                ) : null}
               </Link>
             );
           })}
@@ -272,6 +284,12 @@ function NavDropdown({
 
 function NavInner() {
   const user = useQuery(api.users.current);
+  const family = useQuery(api.users.myFamily);
+  const [wallNow] = useState(() => Date.now());
+  const wallUnread = useQuery(
+    api.feed.unreadCount,
+    family?._id ? { familyId: family._id, now: wallNow } : "skip",
+  );
   const { signOut } = useAuthActions();
   const pathname = usePathname();
   const viewAsStudentId = useViewAsStudentId();
@@ -342,6 +360,7 @@ function NavInner() {
               group={entry.group}
               pathname={pathname}
               resolveHref={resolveHref}
+              wallUnread={wallUnread}
             />
           ),
         )}

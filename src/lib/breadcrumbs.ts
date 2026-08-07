@@ -334,6 +334,13 @@ const ROUTES: RouteRule[] = [
     test: exact("/academy/dashboard"),
     build: () => [{ label: "Academy" }],
   },
+  {
+    test: exact("/academy/cheers"),
+    build: () => [
+      { label: "Academy", href: "/academy/dashboard" },
+      { label: "Student cheers" },
+    ],
+  },
 
   // ── Admin ───────────────────────────────────────────────
   {

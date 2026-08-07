@@ -268,6 +268,9 @@ export default defineSchema({
       v.literal("reward_redeemed"),
       v.literal("accolade_awarded"),
       v.literal("kudos_received"),
+      v.literal("feed_comment"),
+      v.literal("feed_reaction"),
+      v.literal("feed_recheer"),
       v.literal("general"),
     ),
     title: v.string(),
@@ -652,6 +655,7 @@ export default defineSchema({
       v.literal("level_up"),
       v.literal("accolade"),
       v.literal("general"),
+      v.literal("recheer"),
     ),
     actorStudentId: v.optional(v.id("students")),
     targetStudentId: v.optional(v.id("students")),
@@ -665,7 +669,62 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.optional(v.number()),
     createdByUserId: v.optional(v.id("users")),
+    /** Re-cheer: one-level repost attributed to the re-cheering student/user. */
+    isRecheer: v.optional(v.boolean()),
+    originalPostId: v.optional(v.id("feedPosts")),
+    imageStorageId: v.optional(v.id("_storage")),
+    /** Parent pin — shows at top of wall. */
+    pinnedAt: v.optional(v.number()),
+    /** Simple @sibling mentions resolved at compose time. */
+    mentionsStudentIds: v.optional(v.array(v.id("students"))),
   })
     .index("by_family", ["familyId"])
-    .index("by_family_and_createdAt", ["familyId", "createdAt"]),
+    .index("by_family_and_createdAt", ["familyId", "createdAt"])
+    .index("by_original", ["originalPostId"])
+    .index("by_family_and_pinnedAt", ["familyId", "pinnedAt"]),
+
+  feedReactions: defineTable({
+    postId: v.id("feedPosts"),
+    familyId: v.id("families"),
+    actorType: v.union(v.literal("user"), v.literal("student")),
+    actorUserId: v.optional(v.id("users")),
+    actorStudentId: v.optional(v.id("students")),
+    type: v.union(
+      v.literal("like"),
+      v.literal("love"),
+      v.literal("celebrate"),
+      v.literal("support"),
+      v.literal("funny"),
+    ),
+    createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
+  })
+    .index("by_post", ["postId"])
+    .index("by_family", ["familyId"])
+    .index("by_post_and_user", ["postId", "actorUserId"])
+    .index("by_post_and_student", ["postId", "actorStudentId"]),
+
+  feedComments: defineTable({
+    postId: v.id("feedPosts"),
+    familyId: v.id("families"),
+    body: v.string(),
+    stickerKey: v.optional(v.string()),
+    authorUserId: v.optional(v.id("users")),
+    authorStudentId: v.optional(v.id("students")),
+    createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
+    deletedAt: v.optional(v.number()),
+  })
+    .index("by_post", ["postId"])
+    .index("by_family", ["familyId"])
+    .index("by_post_and_createdAt", ["postId", "createdAt"]),
+
+  /** Tracks when a user last viewed the family wall (unread badge). */
+  feedWallReads: defineTable({
+    familyId: v.id("families"),
+    userId: v.id("users"),
+    lastReadAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_family_and_user", ["familyId", "userId"]),
 });

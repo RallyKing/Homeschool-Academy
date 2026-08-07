@@ -14,6 +14,9 @@ export type AlertType =
   | "reward_redeemed"
   | "accolade_awarded"
   | "kudos_received"
+  | "feed_comment"
+  | "feed_reaction"
+  | "feed_recheer"
   | "general";
 
 export type AlertRecipientType = "user" | "family" | "student";

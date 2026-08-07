@@ -49,6 +49,9 @@ const typeLabels: Record<string, string> = {
   reward_redeemed: "Reward",
   accolade_awarded: "Accolade",
   kudos_received: "Cheer",
+  feed_comment: "Wall comment",
+  feed_reaction: "Wall reaction",
+  feed_recheer: "Re-cheer",
   general: "General",
 };
 
