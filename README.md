@@ -2,54 +2,33 @@
 
 Schema-first foundation: Next.js App Router + Convex + Convex Auth (Password).
 
+**Live:** [https://homeschool-academy.vercel.app](https://homeschool-academy.vercel.app)  
+**Repo:** [https://github.com/RallyKing/Homeschool-Academy](https://github.com/RallyKing/Homeschool-Academy)  
+**Convex dashboard:** [https://dashboard.convex.dev/t/joshua-ballard/homeschool-academy](https://dashboard.convex.dev/t/joshua-ballard/homeschool-academy)
+
 ## Prerequisites
 
 - Node.js 18+ (20+ recommended)
 - A [Convex](https://convex.dev) account (free)
+- Optional: [Vercel CLI](https://vercel.com/docs/cli) and [GitHub CLI](https://cli.github.com/)
 
-## Setup
+## Local setup
 
 ```bash
 npm install
-```
-
-### 1. Start Convex (development)
-
-```bash
+npx convex login
 npx convex dev
 ```
 
-This will:
+`convex dev` writes `NEXT_PUBLIC_CONVEX_URL` (and related vars) to `.env.local`, generates `convex/_generated/`, and watches the backend.
 
-1. Log you in (browser) if needed
-2. Create/link a Convex project
-3. Write `NEXT_PUBLIC_CONVEX_URL` to `.env.local`
-4. Generate `convex/_generated/`
-5. Watch and push backend changes
-
-**Use `npx convex dev` for all development.** Do not use `npx convex deploy` until you intentionally ship to production.
-
-### 2. Configure Convex Auth
-
-In a second terminal (or after the first `convex dev` sync):
+In a second terminal (first time, or after creating a new deployment):
 
 ```bash
-npx @convex-dev/auth
+npx @convex-dev/auth --web-server-url http://localhost:3000
 ```
 
-Follow prompts to set `JWT_PRIVATE_KEY`, `JWKS`, and `SITE_URL` on your **dev** deployment.
-
-Or set them manually in the Convex dashboard → Settings → Environment Variables. See [Convex Auth setup](https://labs.convex.dev/auth).
-
-Also ensure `.env.local` has:
-
-```bash
-NEXT_PUBLIC_CONVEX_URL=https://YOUR_DEPLOYMENT.convex.cloud
-# Optional for local Next app URL used by auth redirects:
-SITE_URL=http://localhost:3000
-```
-
-### 3. Run the Next.js app
+Then:
 
 ```bash
 npm run dev
@@ -57,10 +36,12 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
+**Use `npx convex dev` for all local backend work.** Use `npx convex deploy` only when shipping the production Convex backend.
+
 ## First-run checklist
 
 1. Sign up as a **parent** at `/sign-up`
-2. Open Family dashboard → Create family → Add a student
+2. Family dashboard → Create family → Add a student
 3. Log an entry with the Log Entry form
 4. Create a draft schedule and request approval
 5. (Optional) Visit `/admin` and bootstrap SuperAdmin if none exists
@@ -72,8 +53,42 @@ Open [http://localhost:3000](http://localhost:3000).
 |---------|---------|
 | `npm run dev` | Next.js frontend |
 | `npx convex dev` | Convex backend (dev) |
+| `npm run build` | Production Next.js build |
 | `npm run lint` | ESLint |
 | `npm run typecheck` | `tsc --noEmit` |
+
+## Production deploy (already wired)
+
+### Convex production
+
+```bash
+npx convex deploy --yes
+npx @convex-dev/auth --prod --web-server-url https://homeschool-academy.vercel.app
+```
+
+Production deployment URL: `https://rightful-caiman-789.convex.cloud`
+
+### Vercel
+
+Project is linked to this repo. Env vars set for Production / Preview / Development:
+
+- `NEXT_PUBLIC_CONVEX_URL`
+- `NEXT_PUBLIC_CONVEX_SITE_URL`
+- `SITE_URL` (production + preview → `https://homeschool-academy.vercel.app`)
+
+Redeploy:
+
+```bash
+npx vercel deploy --prod --yes
+```
+
+Or push to `master` (GitHub integration is connected).
+
+After changing the production domain, update Convex Auth:
+
+```bash
+npx convex env set SITE_URL https://YOUR_DOMAIN --prod
+```
 
 ## Architecture
 
