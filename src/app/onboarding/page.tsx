@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import { api } from "../../../convex/_generated/api";
@@ -20,6 +20,12 @@ export default function OnboardingPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  useEffect(() => {
+    if (status && !status.needsOnboarding) {
+      router.replace(status.homePath);
+    }
+  }, [status, router]);
+
   if (user === undefined || status === undefined) {
     return <p className="text-sm text-neutral-500">Loading…</p>;
   }
@@ -29,7 +35,6 @@ export default function OnboardingPage() {
   }
 
   if (!status.needsOnboarding) {
-    router.replace(status.homePath);
     return <p className="text-sm text-neutral-500">Redirecting…</p>;
   }
 

@@ -204,7 +204,7 @@ export const create = mutation({
     if (!title) throw new Error("Course title is required");
 
     let familyId = args.familyId;
-    let academyId = args.academyId;
+    const academyId = args.academyId;
 
     if (args.ownerType === "family") {
       if (!familyId) {

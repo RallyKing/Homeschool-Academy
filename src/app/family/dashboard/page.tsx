@@ -28,16 +28,13 @@ export default function FamilyDashboardPage() {
   const [linkStudentId, setLinkStudentId] = useState("");
   const [editStudentId, setEditStudentId] = useState<string>("");
   const [message, setMessage] = useState<string | null>(null);
+  const familyNameSynced = family?.name ?? "";
 
   useEffect(() => {
     if (status?.needsOnboarding) {
       router.replace("/onboarding");
     }
   }, [status, router]);
-
-  useEffect(() => {
-    if (family?.name) setFamilyNameEdit(family.name);
-  }, [family?.name]);
 
   if (user === undefined) {
     return <p className="text-sm text-neutral-500">Loading…</p>;
@@ -65,8 +62,10 @@ export default function FamilyDashboardPage() {
   async function onRenameFamily(e: FormEvent) {
     e.preventDefault();
     if (!family) return;
+    const nextName = (familyNameEdit || familyNameSynced).trim();
     try {
-      await updateFamily({ familyId: family._id, name: familyNameEdit });
+      await updateFamily({ familyId: family._id, name: nextName });
+      setFamilyNameEdit(nextName);
       setMessage("Family name updated.");
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Failed");
@@ -153,7 +152,7 @@ export default function FamilyDashboardPage() {
           >
             <input
               className="min-w-[12rem] flex-1 border border-neutral-300 px-2 py-1.5 text-sm"
-              value={familyNameEdit}
+              value={familyNameEdit || familyNameSynced}
               onChange={(e) => setFamilyNameEdit(e.target.value)}
             />
             <button

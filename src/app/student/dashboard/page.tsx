@@ -58,7 +58,7 @@ export default function StudentDashboardPage() {
     profile ? {} : "skip",
   );
 
-  const since = Date.now() - 14 * 24 * 60 * 60 * 1000;
+  const [since] = useState(() => Date.now() - 14 * 24 * 60 * 60 * 1000);
   const progress = useQuery(
     api.logs.progressSummary,
     profile ? { studentId: profile._id, since } : "skip",
