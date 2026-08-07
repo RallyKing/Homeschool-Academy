@@ -8,6 +8,7 @@ import type { Id } from "../../../convex/_generated/dataModel";
 import {
   Button,
   Input,
+  Textarea,
   Select,
   Modal,
   Section,
@@ -24,6 +25,7 @@ import {
 import { usePageTab } from "@/hooks/usePageTab";
 
 type SubjectCategory = "stem" | "humanities" | "life" | "applied";
+type AppRole = "superAdmin" | "parent" | "teacher" | "student";
 
 const ADMIN_TABS = ["overview", "subjects", "orgs", "users"] as const;
 
@@ -47,22 +49,58 @@ function AdminInner() {
     user?.role === "superAdmin" ? {} : "skip",
   );
   const subjects = useQuery(
-    api.subjects.list,
+    api.admin.listPlatformSubjects,
     user?.role === "superAdmin" ? {} : "skip",
   );
+
   const bootstrap = useMutation(api.admin.bootstrapSuperAdmin);
-  const promote = useMutation(api.admin.promoteToSuperAdmin);
   const seedSubjects = useMutation(api.subjects.seed);
-  const createSubject = useMutation(api.subjects.create);
-  const updateSubject = useMutation(api.subjects.update);
-  const removeSubject = useMutation(api.subjects.remove);
+
+  const createSubject = useMutation(api.admin.createSubject);
+  const updateSubject = useMutation(api.admin.updateSubject);
+  const removeSubject = useMutation(api.admin.removeSubject);
+
+  const createUser = useMutation(api.admin.createUser);
+  const updateUser = useMutation(api.admin.updateUser);
+  const removeUser = useMutation(api.admin.removeUser);
+
+  const createFamily = useMutation(api.admin.createFamily);
+  const updateFamily = useMutation(api.admin.updateFamily);
+  const removeFamily = useMutation(api.admin.removeFamily);
+
+  const createAcademy = useMutation(api.admin.createAcademy);
+  const updateAcademy = useMutation(api.admin.updateAcademy);
+  const removeAcademy = useMutation(api.admin.removeAcademy);
+
   const [message, setMessage] = useState<string | null>(null);
-  const [messageTone, setMessageTone] = useState<"info" | "error" | "success">("info");
+  const [messageTone, setMessageTone] = useState<"info" | "error" | "success">(
+    "info",
+  );
+
+  // Subject modal
+  const [subjectModalOpen, setSubjectModalOpen] = useState(false);
+  const [editSubjectId, setEditSubjectId] = useState("");
   const [subjectName, setSubjectName] = useState("");
   const [subjectCategory, setSubjectCategory] =
     useState<SubjectCategory>("stem");
-  const [editSubjectId, setEditSubjectId] = useState("");
-  const [subjectModalOpen, setSubjectModalOpen] = useState(false);
+
+  // User modal
+  const [userModalOpen, setUserModalOpen] = useState(false);
+  const [editUserId, setEditUserId] = useState("");
+  const [userEmail, setUserEmail] = useState("");
+  const [userName, setUserName] = useState("");
+  const [userRole, setUserRole] = useState<AppRole>("parent");
+
+  // Family modal
+  const [familyModalOpen, setFamilyModalOpen] = useState(false);
+  const [editFamilyId, setEditFamilyId] = useState("");
+  const [familyName, setFamilyName] = useState("");
+
+  // Academy modal
+  const [academyModalOpen, setAcademyModalOpen] = useState(false);
+  const [editAcademyId, setEditAcademyId] = useState("");
+  const [academyName, setAcademyName] = useState("");
+  const [academyDescription, setAcademyDescription] = useState("");
 
   function notify(text: string, tone: "info" | "error" | "success" = "info") {
     setMessage(text);
@@ -76,7 +114,11 @@ function AdminInner() {
     setSubjectModalOpen(true);
   }
 
-  function openEditSubject(s: { _id: Id<"subjects">; name: string; category: SubjectCategory }) {
+  function openEditSubject(s: {
+    _id: Id<"subjects">;
+    name: string;
+    category: SubjectCategory;
+  }) {
     setEditSubjectId(s._id);
     setSubjectName(s.name);
     setSubjectCategory(s.category);
@@ -102,8 +144,130 @@ function AdminInner() {
         notify("Subject created.", "success");
       }
       setSubjectModalOpen(false);
-      setEditSubjectId("");
-      setSubjectName("");
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Failed", "error");
+    }
+  }
+
+  function openCreateUser() {
+    setEditUserId("");
+    setUserEmail("");
+    setUserName("");
+    setUserRole("parent");
+    setUserModalOpen(true);
+  }
+
+  function openEditUser(u: {
+    _id: Id<"users">;
+    email?: string;
+    name?: string;
+    role?: AppRole;
+  }) {
+    setEditUserId(u._id);
+    setUserEmail(u.email ?? "");
+    setUserName(u.name ?? "");
+    setUserRole(u.role ?? "parent");
+    setUserModalOpen(true);
+  }
+
+  async function onUserSubmit(e: FormEvent) {
+    e.preventDefault();
+    try {
+      if (editUserId) {
+        await updateUser({
+          userId: editUserId as Id<"users">,
+          email: userEmail.trim() || undefined,
+          name: userName.trim(),
+          role: userRole,
+        });
+        notify("User updated.", "success");
+      } else {
+        if (!userEmail.trim()) {
+          notify("Email is required.", "error");
+          return;
+        }
+        await createUser({
+          email: userEmail.trim(),
+          name: userName.trim() || undefined,
+          role: userRole === "superAdmin" ? "parent" : userRole,
+        });
+        notify("User stub created.", "success");
+      }
+      setUserModalOpen(false);
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Failed", "error");
+    }
+  }
+
+  function openCreateFamily() {
+    setEditFamilyId("");
+    setFamilyName("");
+    setFamilyModalOpen(true);
+  }
+
+  function openEditFamily(f: { _id: Id<"families">; name: string }) {
+    setEditFamilyId(f._id);
+    setFamilyName(f.name);
+    setFamilyModalOpen(true);
+  }
+
+  async function onFamilySubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!familyName.trim()) return;
+    try {
+      if (editFamilyId) {
+        await updateFamily({
+          familyId: editFamilyId as Id<"families">,
+          name: familyName.trim(),
+        });
+        notify("Family updated.", "success");
+      } else {
+        await createFamily({ name: familyName.trim() });
+        notify("Family created.", "success");
+      }
+      setFamilyModalOpen(false);
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Failed", "error");
+    }
+  }
+
+  function openCreateAcademy() {
+    setEditAcademyId("");
+    setAcademyName("");
+    setAcademyDescription("");
+    setAcademyModalOpen(true);
+  }
+
+  function openEditAcademy(a: {
+    _id: Id<"academies">;
+    name: string;
+    description?: string;
+  }) {
+    setEditAcademyId(a._id);
+    setAcademyName(a.name);
+    setAcademyDescription(a.description ?? "");
+    setAcademyModalOpen(true);
+  }
+
+  async function onAcademySubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!academyName.trim()) return;
+    try {
+      if (editAcademyId) {
+        await updateAcademy({
+          academyId: editAcademyId as Id<"academies">,
+          name: academyName.trim(),
+          description: academyDescription.trim() || undefined,
+        });
+        notify("Academy updated.", "success");
+      } else {
+        await createAcademy({
+          name: academyName.trim(),
+          description: academyDescription.trim() || undefined,
+        });
+        notify("Academy created.", "success");
+      }
+      setAcademyModalOpen(false);
     } catch (err) {
       notify(err instanceof Error ? err.message : "Failed", "error");
     }
@@ -157,6 +321,16 @@ function AdminInner() {
       </Link>
     </div>
   );
+
+  const overviewQuickActions: Array<{
+    label: string;
+    tab: (typeof ADMIN_TABS)[number];
+    count?: number;
+  }> = [
+    { label: "Manage subjects", tab: "subjects", count: subjects?.length },
+    { label: "Manage orgs", tab: "orgs" },
+    { label: "Manage users", tab: "users", count: users?.length },
+  ];
 
   return (
     <div className="page-stack">
@@ -217,6 +391,21 @@ function AdminInner() {
                 {overview.usersByRole.unset}
               </p>
             </Card>
+            <Section title="Quick actions">
+              <div className="flex flex-wrap gap-2">
+                {overviewQuickActions.map((action) => (
+                  <Button
+                    key={action.tab}
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setTab(action.tab)}
+                  >
+                    {action.label}
+                    {action.count !== undefined ? ` (${action.count})` : ""}
+                  </Button>
+                ))}
+              </div>
+            </Section>
           </>
         ) : (
           <p className="text-sm text-[var(--muted)]">Loading overview…</p>
@@ -225,7 +414,7 @@ function AdminInner() {
 
       <TabPanel id="subjects" active={tab === "subjects"}>
         <Section
-          title="Subjects"
+          title="Platform subjects"
           action={
             <div className="flex flex-wrap gap-2">
               <Button
@@ -258,7 +447,7 @@ function AdminInner() {
           {subjects === undefined ? (
             <p className="text-sm text-[var(--muted)]">Loading…</p>
           ) : subjects.length === 0 ? (
-            <EmptyState>No subjects yet.</EmptyState>
+            <EmptyState>No platform subjects yet.</EmptyState>
           ) : (
             <div className="space-y-1.5">
               {subjects.map((s) => (
@@ -307,16 +496,57 @@ function AdminInner() {
       <TabPanel id="orgs" active={tab === "orgs"}>
         <Row gap="lg">
           <Col span={12} md={6}>
-            <Section title="Families">
+            <Section
+              title="Families"
+              action={
+                <Button size="sm" onClick={openCreateFamily}>
+                  Add family
+                </Button>
+              }
+            >
               {families === undefined ? (
                 <p className="text-sm text-[var(--muted)]">Loading…</p>
               ) : families.length === 0 ? (
-                <EmptyState>None</EmptyState>
+                <EmptyState>No families yet.</EmptyState>
               ) : (
                 <div className="space-y-1.5">
                   {families.map((f) => (
                     <div key={f._id} className="list-row list-row-dense">
                       <span className="font-medium">{f.name}</span>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => openEditFamily(f)}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          onClick={() => {
+                            if (
+                              !window.confirm(
+                                `Delete family "${f.name}" and all related students, courses, and data? This cannot be undone.`,
+                              )
+                            ) {
+                              return;
+                            }
+                            void removeFamily({ familyId: f._id })
+                              .then(() =>
+                                notify("Family deleted.", "success"),
+                              )
+                              .catch((err) =>
+                                notify(
+                                  err instanceof Error ? err.message : "Failed",
+                                  "error",
+                                ),
+                              );
+                          }}
+                        >
+                          Delete
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -324,16 +554,64 @@ function AdminInner() {
             </Section>
           </Col>
           <Col span={12} md={6}>
-            <Section title="Academies">
+            <Section
+              title="Academies"
+              action={
+                <Button size="sm" onClick={openCreateAcademy}>
+                  Add academy
+                </Button>
+              }
+            >
               {academies === undefined ? (
                 <p className="text-sm text-[var(--muted)]">Loading…</p>
               ) : academies.length === 0 ? (
-                <EmptyState>None</EmptyState>
+                <EmptyState>No academies yet.</EmptyState>
               ) : (
                 <div className="space-y-1.5">
                   {academies.map((a) => (
                     <div key={a._id} className="list-row list-row-dense">
-                      <span className="font-medium">{a.name}</span>
+                      <div className="min-w-0">
+                        <span className="font-medium">{a.name}</span>
+                        {a.description ? (
+                          <p className="truncate text-xs text-[var(--muted)]">
+                            {a.description}
+                          </p>
+                        ) : null}
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => openEditAcademy(a)}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          onClick={() => {
+                            if (
+                              !window.confirm(
+                                `Delete academy "${a.name}" and cascade courses/memberships? This cannot be undone.`,
+                              )
+                            ) {
+                              return;
+                            }
+                            void removeAcademy({ academyId: a._id })
+                              .then(() =>
+                                notify("Academy deleted.", "success"),
+                              )
+                              .catch((err) =>
+                                notify(
+                                  err instanceof Error ? err.message : "Failed",
+                                  "error",
+                                ),
+                              );
+                          }}
+                        >
+                          Delete
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -344,41 +622,83 @@ function AdminInner() {
       </TabPanel>
 
       <TabPanel id="users" active={tab === "users"}>
-        <Section title="Users">
+        <Section
+          title="Users"
+          action={
+            <Button size="sm" onClick={openCreateUser}>
+              Add user
+            </Button>
+          }
+        >
           {users === undefined ? (
             <p className="text-sm text-[var(--muted)]">Loading…</p>
+          ) : users.length === 0 ? (
+            <EmptyState>No users yet.</EmptyState>
           ) : (
             <div className="space-y-1.5">
-              {users.map((u) => (
-                <div key={u._id} className="list-row list-row-dense">
-                  <div className="min-w-0">
-                    <span className="font-medium">
-                      {u.email ?? u.name ?? u._id}
-                    </span>
-                    <Badge tone="neutral" className="ml-2">
-                      {u.role ?? "unset"}
-                    </Badge>
+              {users.map((u) => {
+                const isSelf = u._id === user._id;
+                return (
+                  <div key={u._id} className="list-row list-row-dense">
+                    <div className="min-w-0">
+                      <span className="font-medium">
+                        {u.email ?? u.name ?? u._id}
+                      </span>
+                      {u.name && u.email ? (
+                        <span className="ml-2 text-sm text-[var(--muted)]">
+                          {u.name}
+                        </span>
+                      ) : null}
+                      <Badge
+                        tone={u.role === "superAdmin" ? "accent" : "neutral"}
+                        className="ml-2"
+                      >
+                        {u.role ?? "unset"}
+                      </Badge>
+                      {isSelf ? (
+                        <Badge tone="neutral" className="ml-2">
+                          you
+                        </Badge>
+                      ) : null}
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openEditUser(u)}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        disabled={isSelf}
+                        onClick={() => {
+                          if (isSelf) return;
+                          const label = u.email ?? u.name ?? "this user";
+                          if (
+                            !window.confirm(
+                              `Delete ${label}? This removes memberships and auth sessions. Orgs they created will be reassigned to you.`,
+                            )
+                          ) {
+                            return;
+                          }
+                          void removeUser({ userId: u._id })
+                            .then(() => notify("User deleted.", "success"))
+                            .catch((err) =>
+                              notify(
+                                err instanceof Error ? err.message : "Failed",
+                                "error",
+                              ),
+                            );
+                        }}
+                      >
+                        Delete
+                      </Button>
+                    </div>
                   </div>
-                  {u.role !== "superAdmin" && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() =>
-                        void promote({ userId: u._id as Id<"users"> })
-                          .then(() => notify(`Promoted ${u.email}`, "success"))
-                          .catch((err) =>
-                            notify(
-                              err instanceof Error ? err.message : "Failed",
-                              "error",
-                            ),
-                          )
-                      }
-                    >
-                      Promote
-                    </Button>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </Section>
@@ -426,6 +746,137 @@ function AdminInner() {
             <option value="life">Life</option>
             <option value="applied">Applied</option>
           </Select>
+        </form>
+      </Modal>
+
+      <Modal
+        open={userModalOpen}
+        onClose={() => setUserModalOpen(false)}
+        title={editUserId ? "Edit user" : "Add user"}
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => setUserModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" form="user-form">
+              {editUserId ? "Save user" : "Create stub"}
+            </Button>
+          </>
+        }
+      >
+        <form
+          id="user-form"
+          onSubmit={(e) => void onUserSubmit(e)}
+          className="space-y-4"
+        >
+          <Input
+            label="Email"
+            type="email"
+            placeholder="user@example.com"
+            value={userEmail}
+            onChange={(e) => setUserEmail(e.target.value)}
+            required={!editUserId}
+          />
+          <Input
+            label="Display name"
+            placeholder="Optional name"
+            value={userName}
+            onChange={(e) => setUserName(e.target.value)}
+          />
+          <Select
+            label="Role"
+            value={userRole}
+            onChange={(e) => setUserRole(e.target.value as AppRole)}
+          >
+            {editUserId ? (
+              <option value="superAdmin">superAdmin</option>
+            ) : null}
+            <option value="parent">parent</option>
+            <option value="teacher">teacher</option>
+            <option value="student">student</option>
+          </Select>
+          {!editUserId ? (
+            <p className="text-xs text-[var(--muted)]">
+              Creates a user row only — they still need to sign up with this
+              email. Grant superAdmin after they exist via Edit.
+            </p>
+          ) : null}
+        </form>
+      </Modal>
+
+      <Modal
+        open={familyModalOpen}
+        onClose={() => setFamilyModalOpen(false)}
+        title={editFamilyId ? "Edit family" : "Add family"}
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => setFamilyModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" form="family-form">
+              {editFamilyId ? "Save family" : "Add family"}
+            </Button>
+          </>
+        }
+      >
+        <form
+          id="family-form"
+          onSubmit={(e) => void onFamilySubmit(e)}
+          className="space-y-4"
+        >
+          <Input
+            label="Family name"
+            placeholder="Household name"
+            value={familyName}
+            onChange={(e) => setFamilyName(e.target.value)}
+            required
+          />
+        </form>
+      </Modal>
+
+      <Modal
+        open={academyModalOpen}
+        onClose={() => setAcademyModalOpen(false)}
+        title={editAcademyId ? "Edit academy" : "Add academy"}
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => setAcademyModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" form="academy-form">
+              {editAcademyId ? "Save academy" : "Add academy"}
+            </Button>
+          </>
+        }
+      >
+        <form
+          id="academy-form"
+          onSubmit={(e) => void onAcademySubmit(e)}
+          className="space-y-4"
+        >
+          <Input
+            label="Academy name"
+            placeholder="Academy name"
+            value={academyName}
+            onChange={(e) => setAcademyName(e.target.value)}
+            required
+          />
+          <Textarea
+            label="Description"
+            placeholder="Optional description"
+            value={academyDescription}
+            onChange={(e) => setAcademyDescription(e.target.value)}
+            rows={3}
+          />
         </form>
       </Modal>
     </div>

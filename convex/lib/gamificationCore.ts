@@ -52,6 +52,20 @@ export function previousDateString(date: string): string {
   return dt.toISOString().slice(0, 10);
 }
 
+/**
+ * Sunday (week start) for a YYYY-MM-DD calendar date.
+ * Uses UTC date components so the calendar day is unambiguous.
+ */
+export function weekStartFromDate(date: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    throw new Error("date must be YYYY-MM-DD");
+  }
+  const [y, m, d] = date.split("-").map(Number);
+  const dt = new Date(Date.UTC(y!, m! - 1, d!));
+  dt.setUTCDate(dt.getUTCDate() - dt.getUTCDay());
+  return dt.toISOString().slice(0, 10);
+}
+
 export function daysBetween(a: string, b: string): number {
   const [ay, am, ad] = a.split("-").map(Number);
   const [by, bm, bd] = b.split("-").map(Number);
@@ -182,7 +196,7 @@ export async function getOrCreateGamification(
 
 function applyWeekly(
   profile: Doc<"studentGamification">,
-  weekStart: string | undefined,
+  weekStart: string,
   xp: number,
   points: number,
   stars: number,
@@ -190,14 +204,16 @@ function applyWeekly(
   weeklyXp: number;
   weeklyPoints: number;
   weeklyStars: number;
-  weekStart: string | undefined;
+  weekStart: string;
 } {
-  if (!weekStart) {
+  // Missing weekStart on older rows: bind existing weekly counters to this week
+  // instead of zeroing (fixes leaderboard showing 0 while totals look correct).
+  if (!profile.weekStart) {
     return {
       weeklyXp: profile.weeklyXp + xp,
       weeklyPoints: profile.weeklyPoints + points,
       weeklyStars: profile.weeklyStars + stars,
-      weekStart: profile.weekStart,
+      weekStart,
     };
   }
   if (profile.weekStart !== weekStart) {
@@ -214,6 +230,48 @@ function applyWeekly(
     weeklyStars: profile.weeklyStars + stars,
     weekStart,
   };
+}
+
+/**
+ * Align weekly counters to the given week without awarding.
+ * Rebinds orphan buckets (no weekStart) that were updated this calendar week.
+ */
+export async function syncWeeklyBucket(
+  ctx: MutationCtx,
+  profile: Doc<"studentGamification">,
+  weekStart: string,
+): Promise<Doc<"studentGamification">> {
+  if (profile.weekStart === weekStart) return profile;
+
+  if (!profile.weekStart) {
+    await ctx.db.patch("studentGamification", profile._id, {
+      weekStart,
+      updatedAt: Date.now(),
+    });
+  } else {
+    // Stale week label but activity this calendar week → rebind (don't zero).
+    // True new week with no activity this week → reset counters.
+    const updatedDay = new Date(profile.updatedAt).toISOString().slice(0, 10);
+    const activityThisWeek = updatedDay >= weekStart;
+    if (activityThisWeek) {
+      await ctx.db.patch("studentGamification", profile._id, {
+        weekStart,
+        updatedAt: Date.now(),
+      });
+    } else {
+      await ctx.db.patch("studentGamification", profile._id, {
+        weeklyXp: 0,
+        weeklyPoints: 0,
+        weeklyStars: 0,
+        weekStart,
+        updatedAt: Date.now(),
+      });
+    }
+  }
+
+  const refreshed = await ctx.db.get("studentGamification", profile._id);
+  if (!refreshed) throw new Error("Gamification profile missing after sync");
+  return refreshed;
 }
 
 type StreakUpdate = {
@@ -388,11 +446,19 @@ export async function awardProgress(
     throw new Error("today must be YYYY-MM-DD");
   }
 
-  const profile = await getOrCreateGamification(
+  let profile = await getOrCreateGamification(
     ctx,
     args.studentId,
     args.familyId,
   );
+
+  const resolvedWeekStart =
+    args.weekStart && /^\d{4}-\d{2}-\d{2}$/.test(args.weekStart)
+      ? args.weekStart
+      : weekStartFromDate(args.today);
+
+  // Heal stale/missing week buckets before applying this award.
+  profile = await syncWeeklyBucket(ctx, profile, resolvedWeekStart);
 
   const streak = args.skipStreak
     ? {
@@ -414,7 +480,7 @@ export async function awardProgress(
   const previousLevel = profile.level;
   const weekly = applyWeekly(
     profile,
-    args.weekStart,
+    resolvedWeekStart,
     xpGain,
     pointsGain,
     starsGain,
@@ -432,6 +498,9 @@ export async function awardProgress(
   let points = profile.points + pointsGain;
   const stars = profile.stars + starsGain;
   let level = levelFromXp(xp);
+  let weeklyXp = weekly.weeklyXp;
+  let weeklyPoints = weekly.weeklyPoints;
+  let weeklyStars = weekly.weeklyStars;
 
   await ctx.db.patch("studentGamification", profile._id, {
     xp,
@@ -442,9 +511,9 @@ export async function awardProgress(
     longestStreak: streak.longestStreak,
     lastCompletionDate: streak.lastCompletionDate,
     streakFreezes: streak.streakFreezes,
-    weeklyXp: weekly.weeklyXp,
-    weeklyPoints: weekly.weeklyPoints,
-    weeklyStars: weekly.weeklyStars,
+    weeklyXp,
+    weeklyPoints,
+    weeklyStars,
     weekStart: weekly.weekStart,
     totalLogs,
     totalChoresCompleted,
@@ -495,10 +564,15 @@ export async function awardProgress(
       xpGain += bx;
       pointsGain += bp;
       level = levelFromXp(xp);
+      weeklyXp += bx;
+      weeklyPoints += bp;
       await ctx.db.patch("studentGamification", profile._id, {
         xp,
         points,
         level,
+        weeklyXp,
+        weeklyPoints,
+        weekStart: resolvedWeekStart,
         updatedAt: Date.now(),
       });
     }
@@ -534,7 +608,7 @@ export async function awardProgress(
       minutesIncrement: args.minutesIncrement,
       newSubject: args.newSubject,
       awardDate: args.today,
-      weekStart: args.weekStart,
+      weekStart: resolvedWeekStart,
       createdAt: Date.now(),
     });
   }

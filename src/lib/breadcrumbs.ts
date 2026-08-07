@@ -98,6 +98,13 @@ const STUDENT_DASH_TAB_LABELS: Record<string, string> = {
   profile: "Profile",
 };
 
+const ADMIN_TAB_LABELS: Record<string, string> = {
+  overview: "Overview",
+  subjects: "Subjects",
+  orgs: "Orgs",
+  users: "Users",
+};
+
 /** Paths where breadcrumbs should not render. */
 export const BREADCRUMB_HIDDEN_PATHS = new Set([
   "/",
@@ -331,7 +338,19 @@ const ROUTES: RouteRule[] = [
   // ── Admin ───────────────────────────────────────────────
   {
     test: exact("/admin"),
-    build: () => [{ label: "Admin" }, { label: "Overview" }],
+    build: (ctx) => {
+      const crumbs: BreadcrumbItem[] = [
+        { label: "Admin", href: "/admin" },
+      ];
+      const tab = ctx.tab && ADMIN_TAB_LABELS[ctx.tab] ? ctx.tab : "overview";
+      if (tab === "overview") {
+        crumbs[0] = { label: "Admin" };
+        crumbs.push({ label: "Overview" });
+      } else {
+        crumbs.push({ label: ADMIN_TAB_LABELS[tab]! });
+      }
+      return crumbs;
+    },
   },
   {
     test: exact("/admin/product-updates"),
