@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { useViewAsStudentId } from "@/hooks/useViewAsStudentId";
+import { StudentAvatar } from "@/components/StudentAvatar";
 import { Container } from "@/components/ui";
 
 export function ViewAsBanner() {
@@ -44,11 +45,20 @@ export function ViewAsBanner() {
   return (
     <div className="border-b border-[var(--warning)]/25 bg-[var(--warning-soft)] px-4 py-2.5 text-sm text-[var(--warning)]">
       <Container size="wide" className="flex flex-wrap items-center justify-between gap-2">
-        <span>
-          Viewing as <strong className="font-semibold">{context.student.displayName}</strong>
-          <span className="opacity-80">
-            {" "}
-            — actions are recorded as you (parent)
+        <span className="flex items-center gap-2.5">
+          <StudentAvatar
+            studentId={context.student._id}
+            imageStorageId={context.student.imageStorageId}
+            name={context.student.displayName}
+            size="sm"
+          />
+          <span>
+            Viewing as{" "}
+            <strong className="font-semibold">{context.student.displayName}</strong>
+            <span className="opacity-80">
+              {" "}
+              — actions are recorded as you (parent)
+            </span>
           </span>
         </span>
         <Link

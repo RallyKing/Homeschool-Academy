@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+﻿import { v } from "convex/values";
 
 export const roleValidator = v.union(
   v.literal("superAdmin"),
@@ -48,6 +48,7 @@ export const studentDocValidator = v.object({
   displayName: v.string(),
   birthYear: v.optional(v.number()),
   academicLevel: v.optional(v.string()),
+  imageStorageId: v.optional(v.id("_storage")),
   createdAt: v.number(),
 });
 

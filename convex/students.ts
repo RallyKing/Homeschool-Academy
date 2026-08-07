@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import type { Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
 import {
   deleteStudentData,
@@ -297,5 +298,82 @@ export const getViewAsContext = query({
     }
 
     return { student, viewingAs: true as const };
+  },
+});
+
+export const generateUploadUrl = mutation({
+  args: {},
+  returns: v.string(),
+  handler: async (ctx) => {
+    await getCurrentUser(ctx);
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
+async function requirePhotoEditor(
+  ctx: Parameters<typeof requireStudentFamilyAccess>[0],
+  studentId: Id<"students">,
+) {
+  const { user, student } = await requireStudentFamilyAccess(ctx, studentId);
+  const isLinkedStudent = student.userId === user._id;
+  const isParent = user.role === "parent" || user.role === "superAdmin";
+  if (!isLinkedStudent && !isParent) {
+    throw new Error(
+      "Only the linked student or a parent can update the profile photo",
+    );
+  }
+  return { user, student };
+}
+
+export const setProfileImage = mutation({
+  args: {
+    studentId: v.id("students"),
+    storageId: v.id("_storage"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { student } = await requirePhotoEditor(ctx, args.studentId);
+
+    if (student.imageStorageId && student.imageStorageId !== args.storageId) {
+      await ctx.storage.delete(student.imageStorageId);
+    }
+
+    await ctx.db.patch("students", student._id, {
+      imageStorageId: args.storageId,
+    });
+    return null;
+  },
+});
+
+export const clearProfileImage = mutation({
+  args: { studentId: v.id("students") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { student } = await requirePhotoEditor(ctx, args.studentId);
+
+    if (student.imageStorageId) {
+      await ctx.storage.delete(student.imageStorageId);
+    }
+
+    await ctx.db.patch("students", student._id, {
+      imageStorageId: undefined,
+    });
+    return null;
+  },
+});
+
+export const getProfileImageUrl = query({
+  args: { studentId: v.id("students") },
+  returns: v.union(v.string(), v.null()),
+  handler: async (ctx, args) => {
+    const student = await ctx.db.get("students", args.studentId);
+    if (!student) {
+      return null;
+    }
+    await requireStudentFamilyAccess(ctx, args.studentId);
+    if (!student.imageStorageId) {
+      return null;
+    }
+    return await ctx.storage.getUrl(student.imageStorageId);
   },
 });

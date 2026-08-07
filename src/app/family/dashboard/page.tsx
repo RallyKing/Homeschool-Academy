@@ -6,6 +6,8 @@ import { useMutation, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
+import { StudentAvatar } from "@/components/StudentAvatar";
+import { StudentPhotoEditor } from "@/components/StudentPhotoEditor";
 import {
   Button,
   Input,
@@ -80,6 +82,7 @@ export default function FamilyDashboardPage() {
     displayName: string;
     academicLevel?: string;
     birthYear?: number;
+    imageStorageId?: Id<"_storage">;
   }) {
     setEditStudentId(s._id);
     setName(s.displayName);
@@ -267,23 +270,31 @@ export default function FamilyDashboardPage() {
           <ul className="space-y-2">
             {students.map((s) => (
               <li key={s._id} className="list-row">
-                <div className="min-w-0">
-                  <p className="font-medium text-[var(--foreground)]">
-                    {s.displayName}
-                  </p>
-                  <p className="text-sm text-[var(--muted)]">
-                    {[s.academicLevel, s.birthYear ? `born ${s.birthYear}` : null]
-                      .filter(Boolean)
-                      .join(" · ")}
-                    {s.userId ? (
-                      <>
-                        {" "}
-                        <Badge tone="success" className="ml-1">
-                          linked
-                        </Badge>
-                      </>
-                    ) : null}
-                  </p>
+                <div className="flex min-w-0 items-center gap-3">
+                  <StudentAvatar
+                    studentId={s._id}
+                    imageStorageId={s.imageStorageId}
+                    name={s.displayName}
+                    size="md"
+                  />
+                  <div className="min-w-0">
+                    <p className="font-medium text-[var(--foreground)]">
+                      {s.displayName}
+                    </p>
+                    <p className="text-sm text-[var(--muted)]">
+                      {[s.academicLevel, s.birthYear ? `born ${s.birthYear}` : null]
+                        .filter(Boolean)
+                        .join(" · ")}
+                      {s.userId ? (
+                        <>
+                          {" "}
+                          <Badge tone="success" className="ml-1">
+                            linked
+                          </Badge>
+                        </>
+                      ) : null}
+                    </p>
+                  </div>
                 </div>
                 <span className="flex flex-wrap items-center gap-2">
                   <Link href={`/family/progress/${s._id}`}>
@@ -480,6 +491,18 @@ export default function FamilyDashboardPage() {
           }
           className="space-y-4"
         >
+          {editStudentId ? (
+            <StudentPhotoEditor
+              studentId={editStudentId as Id<"students">}
+              imageStorageId={
+                students?.find((s) => s._id === editStudentId)?.imageStorageId
+              }
+              name={name || "Student"}
+              size="lg"
+              onError={(text) => setMessage(text)}
+              onSuccess={(text) => setMessage(text)}
+            />
+          ) : null}
           <Input
             label="Student name"
             placeholder="Student name"

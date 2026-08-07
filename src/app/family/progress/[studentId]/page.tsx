@@ -6,6 +6,7 @@ import { useQuery } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
 import { StudentProgressCharts } from "@/components/StudentProgressCharts";
+import { StudentAvatar } from "@/components/StudentAvatar";
 import { Button, PageHeader, Card } from "@/components/ui";
 
 export default function StudentProgressDashboardPage({
@@ -58,11 +59,27 @@ export default function StudentProgressDashboardPage({
         </Link>
       </div>
 
-      <PageHeader
-        eyebrow="Progress dashboard"
-        title={student.displayName}
-        description={`${student.academicLevel ?? "Student"} · learning charts and totals`}
-      />
+      <div className="mb-8 flex flex-wrap items-end justify-between gap-4 border-b border-[var(--border)] pb-6 animate-fade-up">
+        <div className="flex min-w-0 items-center gap-4">
+          <StudentAvatar
+            studentId={student._id}
+            imageStorageId={student.imageStorageId}
+            name={student.displayName}
+            size="lg"
+          />
+          <div className="min-w-0 max-w-2xl">
+            <p className="mb-1 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">
+              Progress dashboard
+            </p>
+            <h1 className="font-display text-3xl font-semibold tracking-tight text-[var(--foreground)] sm:text-4xl">
+              {student.displayName}
+            </h1>
+            <p className="mt-2 text-base text-[var(--muted)] leading-relaxed">
+              {`${student.academicLevel ?? "Student"} · learning charts and totals`}
+            </p>
+          </div>
+        </div>
+      </div>
 
       <Card padding="lg">
         <StudentProgressCharts

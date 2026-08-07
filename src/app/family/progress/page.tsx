@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
+import { StudentAvatar } from "@/components/StudentAvatar";
 import {
   Button,
   Section,
@@ -44,15 +45,23 @@ export default function FamilyProgressPage() {
           <ul className="space-y-2">
             {students.map((s) => (
               <li key={s._id} className="list-row">
-                <div>
-                  <p className="font-medium text-[var(--foreground)]">
-                    {s.displayName}
-                  </p>
-                  {s.academicLevel && (
-                    <p className="text-sm text-[var(--muted)]">
-                      {s.academicLevel}
+                <div className="flex min-w-0 items-center gap-3">
+                  <StudentAvatar
+                    studentId={s._id}
+                    imageStorageId={s.imageStorageId}
+                    name={s.displayName}
+                    size="md"
+                  />
+                  <div>
+                    <p className="font-medium text-[var(--foreground)]">
+                      {s.displayName}
                     </p>
-                  )}
+                    {s.academicLevel && (
+                      <p className="text-sm text-[var(--muted)]">
+                        {s.academicLevel}
+                      </p>
+                    )}
+                  </div>
                 </div>
                 <Link href={`/family/progress/${s._id}`}>
                   <Button variant="secondary" size="sm">

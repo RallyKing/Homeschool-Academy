@@ -5,6 +5,8 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { StudentProgressCharts } from "@/components/StudentProgressCharts";
+import { StudentAvatar } from "@/components/StudentAvatar";
+import { StudentPhotoEditor } from "@/components/StudentPhotoEditor";
 import { useViewAsStudentId } from "@/hooks/useViewAsStudentId";
 import {
   Button,
@@ -200,16 +202,44 @@ function StudentDashboardInner() {
 
   return (
     <div className="space-y-8">
-      <PageHeader
-        eyebrow={profile.academicLevel ?? "Student"}
-        title={profile.displayName}
-        description={`Week of ${week.weekStart}${viewingAs ? " · parent preview" : ""}`}
-        actions={
-          viewingAs ? <Badge tone="warning">Preview mode</Badge> : undefined
-        }
-      />
+      <header className="mb-8 flex flex-wrap items-end justify-between gap-4 border-b border-[var(--border)] pb-6 animate-fade-up">
+        <div className="flex min-w-0 items-center gap-4">
+          <StudentAvatar
+            studentId={profile._id}
+            imageStorageId={profile.imageStorageId}
+            name={profile.displayName}
+            size="xl"
+          />
+          <div className="min-w-0 max-w-2xl">
+            <p className="mb-1 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">
+              {profile.academicLevel ?? "Student"}
+            </p>
+            <h1 className="font-display text-3xl font-semibold tracking-tight text-[var(--foreground)] sm:text-4xl">
+              {profile.displayName}
+            </h1>
+            <p className="mt-2 text-base text-[var(--muted)] leading-relaxed">
+              {`Week of ${week.weekStart}${viewingAs ? " · parent preview" : ""}`}
+            </p>
+          </div>
+        </div>
+        {viewingAs ? <Badge tone="warning">Preview mode</Badge> : null}
+      </header>
 
       <Message tone={messageTone}>{message}</Message>
+
+      <Section
+        title="Profile photo"
+        description="Choose a photo that shows on your dashboard and family lists."
+      >
+        <StudentPhotoEditor
+          studentId={profile._id}
+          imageStorageId={profile.imageStorageId}
+          name={profile.displayName}
+          size="xl"
+          onError={(text) => notify(text, "error")}
+          onSuccess={(text) => notify(text, "success")}
+        />
+      </Section>
 
       <Row gap="lg">
         <Col span={12} lg={6}>

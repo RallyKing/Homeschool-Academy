@@ -1,4 +1,4 @@
-import { defineSchema, defineTable } from "convex/server";
+﻿import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { authTables } from "@convex-dev/auth/server";
 
@@ -115,6 +115,7 @@ export default defineSchema({
     displayName: v.string(),
     birthYear: v.optional(v.number()),
     academicLevel: v.optional(v.string()),
+    imageStorageId: v.optional(v.id("_storage")),
     createdAt: v.number(),
   })
     .index("by_family", ["familyId"])
@@ -196,7 +197,7 @@ export default defineSchema({
     courseId: v.optional(v.id("courses")),
     title: v.string(),
     plannedMinutes: v.number(),
-    dayOfWeek: v.optional(v.number()), // 0–6
+    dayOfWeek: v.optional(v.number()), // 0ΓÇô6
     date: v.optional(v.string()), // ISO date
     createdAt: v.number(),
   })

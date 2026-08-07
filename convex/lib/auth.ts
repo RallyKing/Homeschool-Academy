@@ -331,6 +331,8 @@ export async function deleteStudentData(
 ): Promise<void> {
   await deleteAlertsForStudent(ctx, studentId);
 
+  const student = await ctx.db.get("students", studentId);
+
   const logs = await ctx.db
     .query("logs")
     .withIndex("by_student", (q) => q.eq("studentId", studentId))
@@ -346,6 +348,10 @@ export async function deleteStudentData(
   for (const schedule of schedules) {
     await deleteScheduleItems(ctx, schedule._id);
     await ctx.db.delete("schedules", schedule._id);
+  }
+
+  if (student?.imageStorageId) {
+    await ctx.storage.delete(student.imageStorageId);
   }
 
   await ctx.db.delete("students", studentId);
