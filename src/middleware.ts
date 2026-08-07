@@ -11,6 +11,8 @@ const isProtectedRoute = createRouteMatcher([
   "/academy(.*)",
   "/student(.*)",
   "/onboarding(.*)",
+  "/updates(.*)",
+  "/help(.*)",
 ]);
 
 export default convexAuthNextjsMiddleware(async (request, { convexAuth }) => {

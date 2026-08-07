@@ -4,6 +4,17 @@ import { FormEvent, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
+import {
+  Button,
+  Input,
+  Textarea,
+  Select,
+  Section,
+  Card,
+  Badge,
+  EmptyState,
+  Message,
+} from "@/components/ui";
 
 type EntryType = "native_completion" | "external_time" | "manual";
 
@@ -16,6 +27,7 @@ export function LogEntryForm() {
   const [notes, setNotes] = useState("");
   const [entryType, setEntryType] = useState<EntryType>("external_time");
   const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const selectedStudentId = (studentId || students?.[0]?._id || "") as
@@ -32,6 +44,7 @@ export function LogEntryForm() {
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    setMessage(null);
 
     if (!selectedStudentId) {
       setError("Select a student first.");
@@ -53,6 +66,7 @@ export function LogEntryForm() {
         notes: notes.trim() || undefined,
       });
       setNotes("");
+      setMessage("Log saved.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create log");
     } finally {
@@ -61,109 +75,95 @@ export function LogEntryForm() {
   }
 
   if (students === undefined) {
-    return <p className="text-sm text-neutral-500">Loading students…</p>;
+    return <p className="text-sm text-[var(--muted)]">Loading students…</p>;
   }
 
   if (students.length === 0) {
     return (
-      <p className="text-sm text-neutral-600">
+      <EmptyState>
         Add a student on the family dashboard before logging time.
-      </p>
+      </EmptyState>
     );
   }
 
   return (
     <div className="space-y-6">
-      <form onSubmit={(e) => void onSubmit(e)} className="space-y-3">
-        <h2 className="text-lg font-medium text-neutral-900">Log entry</h2>
+      <Section title="Log entry">
+        <Card>
+          <form onSubmit={(e) => void onSubmit(e)} className="space-y-4">
+            <Select
+              label="Student"
+              value={selectedStudentId}
+              onChange={(e) => setStudentId(e.target.value)}
+            >
+              {students.map((s) => (
+                <option key={s._id} value={s._id}>
+                  {s.displayName}
+                </option>
+              ))}
+            </Select>
 
-        <label className="block text-sm">
-          <span className="text-neutral-600">Student</span>
-          <select
-            className="mt-1 w-full border border-neutral-300 px-2 py-1.5"
-            value={selectedStudentId}
-            onChange={(e) => setStudentId(e.target.value)}
-          >
-            {students.map((s) => (
-              <option key={s._id} value={s._id}>
-                {s.displayName}
-              </option>
-            ))}
-          </select>
-        </label>
+            <Select
+              label="Entry type"
+              value={entryType}
+              onChange={(e) => setEntryType(e.target.value as EntryType)}
+            >
+              <option value="external_time">External time</option>
+              <option value="native_completion">Native completion</option>
+              <option value="manual">Manual</option>
+            </Select>
 
-        <label className="block text-sm">
-          <span className="text-neutral-600">Entry type</span>
-          <select
-            className="mt-1 w-full border border-neutral-300 px-2 py-1.5"
-            value={entryType}
-            onChange={(e) => setEntryType(e.target.value as EntryType)}
-          >
-            <option value="external_time">External time</option>
-            <option value="native_completion">Native completion</option>
-            <option value="manual">Manual</option>
-          </select>
-        </label>
+            <Input
+              label="Duration (minutes)"
+              type="number"
+              min={1}
+              value={durationMinutes}
+              onChange={(e) => setDurationMinutes(e.target.value)}
+              required
+            />
 
-        <label className="block text-sm">
-          <span className="text-neutral-600">Duration (minutes)</span>
-          <input
-            type="number"
-            min={1}
-            className="mt-1 w-full border border-neutral-300 px-2 py-1.5"
-            value={durationMinutes}
-            onChange={(e) => setDurationMinutes(e.target.value)}
-            required
-          />
-        </label>
+            <Textarea
+              label="Notes"
+              rows={3}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="What did they work on?"
+            />
 
-        <label className="block text-sm">
-          <span className="text-neutral-600">Notes</span>
-          <textarea
-            className="mt-1 w-full border border-neutral-300 px-2 py-1.5"
-            rows={3}
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="What did they work on?"
-          />
-        </label>
+            <Message tone="error">{error}</Message>
 
-        {error && <p className="text-sm text-red-700">{error}</p>}
+            <Button type="submit" disabled={saving}>
+              {saving ? "Saving…" : "Save log"}
+            </Button>
+          </form>
+        </Card>
+      </Section>
 
-        <button
-          type="submit"
-          disabled={saving}
-          className="border border-neutral-900 bg-neutral-900 px-3 py-1.5 text-sm text-white disabled:opacity-50"
-        >
-          {saving ? "Saving…" : "Save log"}
-        </button>
-      </form>
-
-      <div>
-        <h3 className="mb-2 text-sm font-medium text-neutral-800">
-          Recent logs
-        </h3>
+      <Section title="Recent logs">
         {logs === undefined ? (
-          <p className="text-sm text-neutral-500">Loading…</p>
+          <p className="text-sm text-[var(--muted)]">Loading…</p>
         ) : logs.length === 0 ? (
-          <p className="text-sm text-neutral-500">No logs yet.</p>
+          <EmptyState>No logs yet.</EmptyState>
         ) : (
-          <ul className="space-y-2 text-sm">
+          <ul className="space-y-2">
             {logs.map((log) => (
-              <li
-                key={log._id}
-                className="border-b border-neutral-100 py-2 text-neutral-700"
-              >
-                <span className="font-medium">{log.durationMinutes} min</span>
-                {" · "}
-                <span>{log.entryType.replaceAll("_", " ")}</span>
-                {log.notes ? ` — ${log.notes}` : ""}
-                {log.verifiedByParent ? " ✓ verified" : ""}
+              <li key={log._id} className="list-row text-sm">
+                <span className="text-[var(--foreground)]">
+                  <span className="font-medium">{log.durationMinutes} min</span>
+                  {" · "}
+                  {log.entryType.replaceAll("_", " ")}
+                  {log.notes ? ` — ${log.notes}` : ""}
+                </span>
+                {log.verifiedByParent && (
+                  <Badge tone="success">verified</Badge>
+                )}
               </li>
             ))}
           </ul>
         )}
-      </div>
+      </Section>
+
+      <Message tone="success">{message}</Message>
     </div>
   );
 }

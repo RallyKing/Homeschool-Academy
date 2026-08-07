@@ -6,6 +6,20 @@ import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { StudentProgressCharts } from "@/components/StudentProgressCharts";
 import { useViewAsStudentId } from "@/hooks/useViewAsStudentId";
+import {
+  Button,
+  Input,
+  Textarea,
+  Select,
+  Section,
+  Card,
+  PageHeader,
+  Badge,
+  EmptyState,
+  Message,
+  Row,
+  Col,
+} from "@/components/ui";
 
 function isoDate(d: Date) {
   return d.toISOString().slice(0, 10);
@@ -49,6 +63,7 @@ function StudentDashboardInner() {
   const [familyName, setFamilyName] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [message, setMessage] = useState<string | null>(null);
+  const [messageTone, setMessageTone] = useState<"info" | "error" | "success">("info");
 
   const [durationMinutes, setDurationMinutes] = useState("30");
   const [notes, setNotes] = useState("");
@@ -91,6 +106,11 @@ function StudentDashboardInner() {
         (i.dayOfWeek === undefined && i.date === undefined),
     ) ?? [];
 
+  function notify(text: string, tone: "info" | "error" | "success" = "info") {
+    setMessage(text);
+    setMessageTone(tone);
+  }
+
   async function onClaim(e: FormEvent) {
     e.preventDefault();
     setMessage(null);
@@ -99,9 +119,9 @@ function StudentDashboardInner() {
         familyName: familyName.trim(),
         displayName: displayName.trim(),
       });
-      setMessage("Profile linked.");
+      notify("Profile linked.", "success");
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Failed");
+      notify(err instanceof Error ? err.message : "Failed", "error");
     }
   }
 
@@ -118,212 +138,224 @@ function StudentDashboardInner() {
         courseId: courseId ? (courseId as Id<"courses">) : undefined,
       });
       setNotes("");
-      setMessage(
+      notify(
         viewingAs
           ? "Log saved (recorded as you, for this student)."
           : "Log saved.",
+        "success",
       );
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Failed");
+      notify(err instanceof Error ? err.message : "Failed", "error");
     }
   }
 
   if (user === undefined || profileLoading) {
-    return <p className="text-sm text-neutral-500">Loading…</p>;
+    return <p className="text-sm text-[var(--muted)]">Loading…</p>;
   }
 
   if (!user) {
-    return <p className="text-sm">Please sign in.</p>;
+    return <p className="text-sm text-[var(--muted)]">Please sign in.</p>;
   }
 
   if (viewAsDenied) {
     return (
-      <div className="space-y-3">
-        <h1 className="text-2xl font-semibold">View as student</h1>
-        <p className="text-sm text-neutral-600">
-          You don&apos;t have permission to view this student, or the profile
-          was not found.
-        </p>
+      <div className="space-y-6">
+        <PageHeader
+          title="View as student"
+          description="You don't have permission to view this student, or the profile was not found."
+        />
       </div>
     );
   }
 
   if (!profile) {
     return (
-      <div className="space-y-6">
-        <h1 className="text-2xl font-semibold">Student dashboard</h1>
-        <p className="text-sm text-neutral-600">
-          Link your account to a student profile your parent created. Use the
-          exact family name and your display name.
-        </p>
-        <form onSubmit={(e) => void onClaim(e)} className="max-w-sm space-y-3">
-          <label className="block text-sm">
-            Family name
-            <input
-              className="mt-1 w-full border border-neutral-300 px-2 py-1.5"
+      <div className="space-y-8">
+        <PageHeader
+          eyebrow="Student"
+          title="Dashboard"
+          description="Link your account to a student profile your parent created. Use the exact family name and your display name."
+        />
+        <Card padding="lg" className="max-w-md">
+          <form onSubmit={(e) => void onClaim(e)} className="space-y-4">
+            <Input
+              label="Family name"
               value={familyName}
               onChange={(e) => setFamilyName(e.target.value)}
               required
             />
-          </label>
-          <label className="block text-sm">
-            Your student name
-            <input
-              className="mt-1 w-full border border-neutral-300 px-2 py-1.5"
+            <Input
+              label="Your student name"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               required
             />
-          </label>
-          <button
-            type="submit"
-            className="border border-neutral-900 bg-neutral-900 px-3 py-1.5 text-sm text-white"
-          >
-            Claim profile
-          </button>
-        </form>
-        {message && <p className="text-sm text-neutral-600">{message}</p>}
+            <Button type="submit">Claim profile</Button>
+          </form>
+        </Card>
+        <Message tone={messageTone}>{message}</Message>
       </div>
     );
   }
 
   return (
-    <div className="space-y-10">
-      <div>
-        <h1 className="text-2xl font-semibold">{profile.displayName}</h1>
-        <p className="text-sm text-neutral-600">
-          {profile.academicLevel ?? "Student"} · week of {week.weekStart}
-          {viewingAs ? " · parent preview" : ""}
-        </p>
-      </div>
+    <div className="space-y-8">
+      <PageHeader
+        eyebrow={profile.academicLevel ?? "Student"}
+        title={profile.displayName}
+        description={`Week of ${week.weekStart}${viewingAs ? " · parent preview" : ""}`}
+        actions={
+          viewingAs ? <Badge tone="warning">Preview mode</Badge> : undefined
+        }
+      />
 
-      <section className="space-y-2">
-        <h2 className="text-lg font-medium">Today&apos;s plan</h2>
-        {!approved ? (
-          <p className="text-sm text-neutral-500">
-            No approved schedule for this week yet.
-          </p>
-        ) : todayItems.length === 0 ? (
-          <p className="text-sm text-neutral-500">
-            Nothing scheduled for {DAYS[week.dayOfWeek]} — check the full week
-            below.
-          </p>
-        ) : (
-          <ul className="text-sm">
-            {todayItems.map((item) => (
-              <li key={item._id} className="border-b border-neutral-100 py-2">
-                {item.title} · {item.plannedMinutes} min
-              </li>
-            ))}
-          </ul>
+      <Message tone={messageTone}>{message}</Message>
+
+      <Row gap="lg">
+        <Col span={12} lg={6}>
+          <Section title="Today's plan">
+            {!approved ? (
+              <EmptyState>No approved schedule for this week yet.</EmptyState>
+            ) : todayItems.length === 0 ? (
+              <EmptyState>
+                Nothing scheduled for {DAYS[week.dayOfWeek]} — check the full week
+                below.
+              </EmptyState>
+            ) : (
+              <div className="space-y-2">
+                {todayItems.map((item) => (
+                  <div key={item._id} className="list-row">
+                    <span className="font-medium">{item.title}</span>
+                    <Badge tone="neutral">{item.plannedMinutes} min</Badge>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Section>
+        </Col>
+
+        {approved && (
+          <Col span={12} lg={6}>
+            <Section
+              title="This week"
+              action={
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() =>
+                    void requestRevision({ scheduleId: approved.schedule._id })
+                      .then(() =>
+                        notify("Revision requested — back to draft.", "success"),
+                      )
+                      .catch((err) =>
+                        notify(err instanceof Error ? err.message : "Failed", "error"),
+                      )
+                  }
+                >
+                  Request revision
+                </Button>
+              }
+            >
+              <div className="space-y-2">
+                {approved.items.map((item) => (
+                  <div key={item._id} className="list-row">
+                    <span>
+                      {item.dayOfWeek !== undefined
+                        ? `${DAYS[item.dayOfWeek]} · `
+                        : ""}
+                      {item.title}
+                    </span>
+                    <Badge tone="neutral">{item.plannedMinutes} min</Badge>
+                  </div>
+                ))}
+              </div>
+            </Section>
+          </Col>
         )}
-      </section>
+      </Row>
 
-      {approved && (
-        <section className="space-y-2">
-          <h2 className="text-lg font-medium">This week</h2>
-          <ul className="text-sm">
-            {approved.items.map((item) => (
-              <li key={item._id} className="border-b border-neutral-100 py-2">
-                {item.dayOfWeek !== undefined
-                  ? `${DAYS[item.dayOfWeek]} · `
-                  : ""}
-                {item.title} · {item.plannedMinutes} min
-              </li>
-            ))}
-          </ul>
-          <button
-            type="button"
-            className="text-sm underline"
-            onClick={() =>
-              void requestRevision({ scheduleId: approved.schedule._id })
-                .then(() => setMessage("Revision requested — back to draft."))
-                .catch((err) =>
-                  setMessage(err instanceof Error ? err.message : "Failed"),
-                )
-            }
-          >
-            Request schedule revision
-          </button>
-        </section>
-      )}
+      <Section title="Log learning" description="Record time spent or mark lessons complete.">
+        <Card padding="md" className="max-w-xl">
+          <form onSubmit={(e) => void onLog(e)} className="space-y-4">
+            <Select
+              label="Entry type"
+              value={entryType}
+              onChange={(e) => setEntryType(e.target.value as EntryType)}
+            >
+              <option value="external_time">External time</option>
+              <option value="native_completion">Mark lesson complete</option>
+              <option value="manual">Manual</option>
+            </Select>
+            <Select
+              label="Course"
+              value={courseId}
+              onChange={(e) => setCourseId(e.target.value)}
+            >
+              <option value="">Optional</option>
+              {(courses ?? []).map((c) => (
+                <option key={c._id} value={c._id}>
+                  {c.title}
+                </option>
+              ))}
+            </Select>
+            <Input
+              label="Duration (minutes)"
+              type="number"
+              min={1}
+              value={durationMinutes}
+              onChange={(e) => setDurationMinutes(e.target.value)}
+            />
+            <Textarea
+              label="Notes"
+              rows={2}
+              placeholder="What did you work on?"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
+            <Button type="submit">Save log</Button>
+          </form>
+        </Card>
+      </Section>
 
-      <section className="space-y-3">
-        <h2 className="text-lg font-medium">Log learning</h2>
-        <form onSubmit={(e) => void onLog(e)} className="space-y-2">
-          <select
-            className="w-full border border-neutral-300 px-2 py-1.5 text-sm"
-            value={entryType}
-            onChange={(e) => setEntryType(e.target.value as EntryType)}
-          >
-            <option value="external_time">External time</option>
-            <option value="native_completion">Mark lesson complete</option>
-            <option value="manual">Manual</option>
-          </select>
-          <select
-            className="w-full border border-neutral-300 px-2 py-1.5 text-sm"
-            value={courseId}
-            onChange={(e) => setCourseId(e.target.value)}
-          >
-            <option value="">Course (optional)</option>
-            {(courses ?? []).map((c) => (
-              <option key={c._id} value={c._id}>
-                {c.title}
-              </option>
-            ))}
-          </select>
-          <input
-            type="number"
-            min={1}
-            className="w-full border border-neutral-300 px-2 py-1.5 text-sm"
-            value={durationMinutes}
-            onChange={(e) => setDurationMinutes(e.target.value)}
-          />
-          <textarea
-            className="w-full border border-neutral-300 px-2 py-1.5 text-sm"
-            rows={2}
-            placeholder="Notes"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-          />
-          <button
-            type="submit"
-            className="border border-neutral-900 bg-neutral-900 px-3 py-1.5 text-sm text-white"
-          >
-            Save log
-          </button>
-        </form>
-      </section>
-
-      <section className="space-y-4 border-t border-neutral-200 pt-8">
+      <Section title="Progress">
         <StudentProgressCharts
           studentId={profile._id}
           defaultRangeDays={14}
-          title="Progress"
+          title=""
         />
-      </section>
+      </Section>
 
       {schedules && schedules.length > 0 && (
-        <section className="space-y-2">
-          <h2 className="text-lg font-medium">Schedule status</h2>
-          <ul className="text-sm">
+        <Section title="Schedule status">
+          <div className="space-y-2">
             {schedules.slice(0, 5).map((s) => (
-              <li key={s._id} className="border-b border-neutral-100 py-1">
-                {s.weekStart} → {s.weekEnd} · {s.status}
-              </li>
+              <div key={s._id} className="list-row">
+                <span className="text-sm">
+                  {s.weekStart} → {s.weekEnd}
+                </span>
+                <Badge
+                  tone={
+                    s.status === "approved"
+                      ? "success"
+                      : s.status === "draft"
+                        ? "warning"
+                        : "neutral"
+                  }
+                >
+                  {s.status}
+                </Badge>
+              </div>
             ))}
-          </ul>
-        </section>
+          </div>
+        </Section>
       )}
-
-      {message && <p className="text-sm text-neutral-600">{message}</p>}
     </div>
   );
 }
 
 export default function StudentDashboardPage() {
   return (
-    <Suspense fallback={<p className="text-sm text-neutral-500">Loading…</p>}>
+    <Suspense fallback={<p className="text-sm text-[var(--muted)]">Loading…</p>}>
       <StudentDashboardInner />
     </Suspense>
   );

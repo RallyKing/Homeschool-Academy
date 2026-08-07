@@ -4,6 +4,15 @@ import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { useAction, useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
+import {
+  Button,
+  Textarea,
+  Section,
+  Card,
+  PageHeader,
+  Badge,
+  Message,
+} from "@/components/ui";
 
 export default function FamilyAiPage() {
   const user = useQuery(api.users.current);
@@ -44,82 +53,78 @@ export default function FamilyAiPage() {
   }
 
   if (user === undefined) {
-    return <p className="text-sm text-neutral-500">Loading…</p>;
+    return <p className="text-sm text-[var(--muted)]">Loading…</p>;
   }
 
   if (!user) {
-    return <p className="text-sm">Please sign in.</p>;
+    return <p className="text-sm text-[var(--muted)]">Please sign in.</p>;
   }
 
   return (
     <div className="space-y-8">
-      <div>
-        <p className="text-sm">
-          <Link href="/family/dashboard" className="underline">
-            ← Family
-          </Link>
-        </p>
-        <h1 className="mt-2 text-2xl font-semibold">AI guardrails demo</h1>
-        <p className="text-sm text-neutral-600">
-          Student prompt + parent context → constrained response. Uses OpenAI
-          when <code className="text-xs">OPENAI_API_KEY</code> is set on Convex;
-          otherwise a deterministic mock.
-        </p>
-      </div>
+      <Link href="/family/dashboard">
+        <Button variant="ghost" size="sm">
+          ← Family
+        </Button>
+      </Link>
 
-      <form onSubmit={(e) => void onSubmit(e)} className="space-y-3">
-        <label className="block text-sm">
-          Parent guardrail context
-          <textarea
-            className="mt-1 w-full border border-neutral-300 px-2 py-1.5"
-            rows={3}
-            value={parentGuardrailContext}
-            onChange={(e) => setParentGuardrailContext(e.target.value)}
-            required
-          />
-        </label>
-        <label className="block text-sm">
-          Student prompt
-          <textarea
-            className="mt-1 w-full border border-neutral-300 px-2 py-1.5"
-            rows={3}
-            value={studentPrompt}
-            onChange={(e) => setStudentPrompt(e.target.value)}
-            required
-          />
-        </label>
-        <button
-          type="submit"
-          disabled={busy}
-          className="border border-neutral-900 bg-neutral-900 px-3 py-1.5 text-sm text-white disabled:opacity-50"
-        >
-          {busy ? "Checking…" : "Run guardrails"}
-        </button>
-      </form>
+      <PageHeader
+        title="AI guardrails demo"
+        description="Student prompt + parent context → constrained response. Uses OpenAI when OPENAI_API_KEY is set on Convex; otherwise a deterministic mock."
+      />
 
-      {error && <p className="text-sm text-red-700">{error}</p>}
+      <Section title="Test guardrails">
+        <Card>
+          <form onSubmit={(e) => void onSubmit(e)} className="space-y-4">
+            <Textarea
+              label="Parent guardrail context"
+              rows={3}
+              value={parentGuardrailContext}
+              onChange={(e) => setParentGuardrailContext(e.target.value)}
+              required
+            />
+            <Textarea
+              label="Student prompt"
+              rows={3}
+              value={studentPrompt}
+              onChange={(e) => setStudentPrompt(e.target.value)}
+              required
+            />
+            <Button type="submit" disabled={busy}>
+              {busy ? "Checking…" : "Run guardrails"}
+            </Button>
+          </form>
+        </Card>
+      </Section>
+
+      <Message tone="error">{error}</Message>
 
       {result && (
-        <section className="space-y-2 border-t border-neutral-200 pt-4 text-sm">
-          <p>
-            <span className="font-medium">
-              {result.allowed ? "Allowed" : "Blocked"}
-            </span>
-            {" · "}
-            provider: {result.provider}
-          </p>
-          <p className="text-neutral-600">{result.reason}</p>
-          {result.filteredTopics.length > 0 && (
-            <p>Filtered: {result.filteredTopics.join(", ")}</p>
-          )}
-          <pre className="whitespace-pre-wrap border border-neutral-200 bg-white p-3 text-neutral-800">
-            {result.response}
-          </pre>
-          <p className="text-neutral-500">
-            Tip: try a prompt containing &quot;weapon&quot; or a blocked term
-            from your context to see a refusal.
-          </p>
-        </section>
+        <Section title="Result">
+          <Card className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone={result.allowed ? "success" : "danger"}>
+                {result.allowed ? "Allowed" : "Blocked"}
+              </Badge>
+              <span className="text-sm text-[var(--muted)]">
+                provider: {result.provider}
+              </span>
+            </div>
+            <p className="text-sm text-[var(--muted)]">{result.reason}</p>
+            {result.filteredTopics.length > 0 && (
+              <p className="text-sm text-[var(--foreground)]">
+                Filtered: {result.filteredTopics.join(", ")}
+              </p>
+            )}
+            <pre className="whitespace-pre-wrap rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-2)] p-4 text-sm text-[var(--foreground)]">
+              {result.response}
+            </pre>
+            <p className="text-xs text-[var(--muted)]">
+              Tip: try a prompt containing &quot;weapon&quot; or a blocked term
+              from your context to see a refusal.
+            </p>
+          </Card>
+        </Section>
       )}
     </div>
   );

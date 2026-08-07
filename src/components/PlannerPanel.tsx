@@ -4,6 +4,15 @@ import { FormEvent, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
+import {
+  Button,
+  Select,
+  Section,
+  Card,
+  Badge,
+  EmptyState,
+  Message,
+} from "@/components/ui";
 
 function isoDate(d: Date) {
   return d.toISOString().slice(0, 10);
@@ -17,6 +26,21 @@ function weekRange() {
   const end = new Date(start);
   end.setDate(start.getDate() + 6);
   return { weekStart: isoDate(start), weekEnd: isoDate(end) };
+}
+
+function statusTone(
+  status: string,
+): "neutral" | "accent" | "success" | "warning" {
+  switch (status) {
+    case "approved":
+      return "success";
+    case "pending_approval":
+      return "warning";
+    case "draft":
+      return "accent";
+    default:
+      return "neutral";
+  }
 }
 
 export function PlannerPanel() {
@@ -51,98 +75,92 @@ export function PlannerPanel() {
   }
 
   if (students === undefined) {
-    return <p className="text-sm text-neutral-500">Loading…</p>;
+    return <p className="text-sm text-[var(--muted)]">Loading…</p>;
   }
 
   if (students.length === 0) {
     return (
-      <p className="text-sm text-neutral-600">
-        Add a student to use the planner.
-      </p>
+      <EmptyState>Add a student to use the planner.</EmptyState>
     );
   }
 
   return (
     <div className="space-y-4">
-      <h2 className="text-lg font-medium text-neutral-900">Weekly planner</h2>
+      <Section title="Weekly planner">
+        <Card>
+          <Select
+            label="Student"
+            value={selectedStudentId}
+            onChange={(e) => setStudentId(e.target.value)}
+          >
+            {students.map((s) => (
+              <option key={s._id} value={s._id}>
+                {s.displayName}
+              </option>
+            ))}
+          </Select>
 
-      <label className="block text-sm">
-        <span className="text-neutral-600">Student</span>
-        <select
-          className="mt-1 w-full border border-neutral-300 px-2 py-1.5"
-          value={selectedStudentId}
-          onChange={(e) => setStudentId(e.target.value)}
-        >
-          {students.map((s) => (
-            <option key={s._id} value={s._id}>
-              {s.displayName}
-            </option>
-          ))}
-        </select>
-      </label>
+          <form onSubmit={(e) => void createWeek(e)} className="mt-4">
+            <Button type="submit" variant="secondary" size="sm">
+              Create draft for this week
+            </Button>
+          </form>
+        </Card>
+      </Section>
 
-      <form onSubmit={(e) => void createWeek(e)}>
-        <button
-          type="submit"
-          className="border border-neutral-400 px-3 py-1.5 text-sm"
-        >
-          Create draft for this week
-        </button>
-      </form>
+      <Message tone="success">{message}</Message>
 
-      {message && <p className="text-sm text-neutral-600">{message}</p>}
-
-      <ul className="space-y-2 text-sm">
+      <Section title="Schedules">
         {schedules === undefined ? (
-          <li className="text-neutral-500">Loading schedules…</li>
+          <p className="text-sm text-[var(--muted)]">Loading schedules…</p>
         ) : schedules.length === 0 ? (
-          <li className="text-neutral-500">No schedules yet.</li>
+          <EmptyState>No schedules yet.</EmptyState>
         ) : (
-          schedules.map((s) => (
-            <li
-              key={s._id}
-              className="flex flex-wrap items-center gap-2 border-b border-neutral-100 py-2"
-            >
-              <span>
-                {s.weekStart} → {s.weekEnd}
-              </span>
-              <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-xs uppercase tracking-wide text-neutral-700">
-                {s.status}
-              </span>
-              {s.status === "draft" && (
-                <button
-                  type="button"
-                  className="text-xs underline"
-                  onClick={() =>
-                    void requestApproval({ scheduleId: s._id }).catch((err) =>
-                      setMessage(
-                        err instanceof Error ? err.message : "Failed",
-                      ),
-                    )
-                  }
-                >
-                  Request approval
-                </button>
-              )}
-              {s.status === "pending_approval" && (
-                <button
-                  type="button"
-                  className="text-xs underline"
-                  onClick={() =>
-                    void approve({ scheduleId: s._id }).catch((err) =>
-                      setMessage(
-                        err instanceof Error ? err.message : "Failed",
-                      ),
-                    )
-                  }
-                >
-                  Approve
-                </button>
-              )}
-            </li>
-          ))
+          <ul className="space-y-2">
+            {schedules.map((s) => (
+              <li key={s._id} className="list-row">
+                <span className="text-sm text-[var(--foreground)]">
+                  {s.weekStart} → {s.weekEnd}
+                </span>
+                <span className="flex flex-wrap items-center gap-2">
+                  <Badge tone={statusTone(s.status)}>{s.status}</Badge>
+                  {s.status === "draft" && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() =>
+                        void requestApproval({ scheduleId: s._id }).catch(
+                          (err) =>
+                            setMessage(
+                              err instanceof Error ? err.message : "Failed",
+                            ),
+                        )
+                      }
+                    >
+                      Request approval
+                    </Button>
+                  )}
+                  {s.status === "pending_approval" && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() =>
+                        void approve({ scheduleId: s._id }).catch((err) =>
+                          setMessage(
+                            err instanceof Error ? err.message : "Failed",
+                          ),
+                        )
+                      }
+                    >
+                      Approve
+                    </Button>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
         )}
-      </ul>
+      </Section>
     </div>
   );
 }

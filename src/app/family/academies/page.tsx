@@ -5,6 +5,14 @@ import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
+import {
+  Button,
+  Section,
+  PageHeader,
+  Badge,
+  EmptyState,
+  Message,
+} from "@/components/ui";
 
 export default function FamilyAcademiesPage() {
   const family = useQuery(api.users.myFamily);
@@ -19,54 +27,59 @@ export default function FamilyAcademiesPage() {
   );
 
   if (family === undefined) {
-    return <p className="text-sm text-neutral-500">Loading…</p>;
+    return <p className="text-sm text-[var(--muted)]">Loading…</p>;
   }
 
   if (!family) {
     return (
-      <p className="text-sm">
-        <Link href="/onboarding" className="underline">
-          Create a family
-        </Link>{" "}
-        first.
-      </p>
+      <div className="space-y-4">
+        <Link href="/onboarding">
+          <Button variant="ghost" size="sm">
+            Create a family
+          </Button>
+        </Link>
+        <p className="text-sm text-[var(--muted)]">
+          Set up your family before browsing academies.
+        </p>
+      </div>
     );
   }
 
   return (
     <div className="space-y-8">
-      <div>
-        <p className="text-sm">
-          <Link href="/family/dashboard" className="underline">
-            ← Family
-          </Link>
-        </p>
-        <h1 className="mt-2 text-2xl font-semibold">Academies</h1>
-        <p className="text-sm text-neutral-600">
-          Opt in to teacher academies to use their published courses.
-        </p>
-      </div>
+      <Link href="/family/dashboard">
+        <Button variant="ghost" size="sm">
+          ← Family
+        </Button>
+      </Link>
 
-      <section className="space-y-2">
-        <h2 className="text-lg font-medium">Active subscriptions</h2>
-        <ul className="text-sm">
-          {subscriptions === undefined ? (
-            <li>Loading…</li>
-          ) : subscriptions.length === 0 ? (
-            <li className="text-neutral-500">None yet.</li>
-          ) : (
-            subscriptions.map(({ academy, subscription }) => (
-              <li
-                key={subscription._id}
-                className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-100 py-2"
-              >
-                <span>
-                  {academy.name}
-                  {academy.description ? ` — ${academy.description}` : ""}
-                </span>
-                <button
-                  type="button"
-                  className="text-xs underline"
+      <PageHeader
+        title="Academies"
+        description="Opt in to teacher academies to use their published courses."
+      />
+
+      <Section title="Active subscriptions">
+        {subscriptions === undefined ? (
+          <p className="text-sm text-[var(--muted)]">Loading…</p>
+        ) : subscriptions.length === 0 ? (
+          <EmptyState>No subscriptions yet — browse academies below.</EmptyState>
+        ) : (
+          <ul className="space-y-2">
+            {subscriptions.map(({ academy, subscription }) => (
+              <li key={subscription._id} className="list-row">
+                <div className="min-w-0">
+                  <p className="font-medium text-[var(--foreground)]">
+                    {academy.name}
+                  </p>
+                  {academy.description && (
+                    <p className="text-sm text-[var(--muted)]">
+                      {academy.description}
+                    </p>
+                  )}
+                </div>
+                <Button
+                  variant="danger"
+                  size="sm"
                   onClick={() =>
                     void unsubscribe({ academyId: academy._id })
                       .then(() => setMessage("Unsubscribed."))
@@ -78,41 +91,36 @@ export default function FamilyAcademiesPage() {
                   }
                 >
                   Unsubscribe
-                </button>
+                </Button>
               </li>
-            ))
-          )}
-        </ul>
-      </section>
+            ))}
+          </ul>
+        )}
+      </Section>
 
-      <section className="space-y-2">
-        <h2 className="text-lg font-medium">Browse academies</h2>
-        <ul className="text-sm">
-          {academies === undefined ? (
-            <li>Loading…</li>
-          ) : academies.length === 0 ? (
-            <li className="text-neutral-500">
-              No academies published yet. Teachers create them from the academy
-              dashboard.
-            </li>
-          ) : (
-            academies.map((a) => (
-              <li
-                key={a._id}
-                className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-100 py-2"
-              >
-                <div>
-                  <p className="font-medium">{a.name}</p>
+      <Section title="Browse academies">
+        {academies === undefined ? (
+          <p className="text-sm text-[var(--muted)]">Loading…</p>
+        ) : academies.length === 0 ? (
+          <EmptyState>
+            No academies published yet. Teachers create them from the academy
+            dashboard.
+          </EmptyState>
+        ) : (
+          <ul className="space-y-2">
+            {academies.map((a) => (
+              <li key={a._id} className="list-row">
+                <div className="min-w-0">
+                  <p className="font-medium text-[var(--foreground)]">{a.name}</p>
                   {a.description && (
-                    <p className="text-neutral-600">{a.description}</p>
+                    <p className="text-sm text-[var(--muted)]">{a.description}</p>
                   )}
                 </div>
                 {subscribedIds.has(a._id) ? (
-                  <span className="text-xs text-neutral-500">Subscribed</span>
+                  <Badge tone="success">Subscribed</Badge>
                 ) : (
-                  <button
-                    type="button"
-                    className="border border-neutral-900 bg-neutral-900 px-2 py-1 text-xs text-white"
+                  <Button
+                    size="sm"
                     onClick={() =>
                       void subscribe({
                         academyId: a._id as Id<"academies">,
@@ -126,15 +134,15 @@ export default function FamilyAcademiesPage() {
                     }
                   >
                     Subscribe
-                  </button>
+                  </Button>
                 )}
               </li>
-            ))
-          )}
-        </ul>
-      </section>
+            ))}
+          </ul>
+        )}
+      </Section>
 
-      {message && <p className="text-sm text-neutral-600">{message}</p>}
+      <Message tone="success">{message}</Message>
     </div>
   );
 }

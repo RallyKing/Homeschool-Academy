@@ -5,6 +5,20 @@ import { FormEvent, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
+import {
+  Button,
+  Input,
+  Textarea,
+  Select,
+  Section,
+  Card,
+  PageHeader,
+  Badge,
+  EmptyState,
+  Message,
+  Row,
+  Col,
+} from "@/components/ui";
 
 type EntryType = "native_completion" | "external_time" | "manual";
 
@@ -28,6 +42,7 @@ export default function FamilyLedgerPage() {
   const [file, setFile] = useState<File | null>(null);
   const [editLogId, setEditLogId] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const selectedStudentId = (studentId || students?.[0]?._id || "") as
@@ -44,6 +59,7 @@ export default function FamilyLedgerPage() {
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    setMessage(null);
     if (!selectedStudentId) {
       setError("Select a student first.");
       return;
@@ -67,6 +83,7 @@ export default function FamilyLedgerPage() {
         });
         setEditLogId("");
         setNotes("");
+        setMessage("Log updated.");
         return;
       }
 
@@ -96,6 +113,7 @@ export default function FamilyLedgerPage() {
       });
       setNotes("");
       setFile(null);
+      setMessage("Log saved.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save log");
     } finally {
@@ -104,180 +122,180 @@ export default function FamilyLedgerPage() {
   }
 
   if (students === undefined) {
-    return <p className="text-sm text-neutral-500">Loading…</p>;
+    return <p className="text-sm text-[var(--muted)]">Loading…</p>;
   }
 
   return (
     <div className="space-y-8">
-      <div>
-        <p className="text-sm">
-          <Link href="/family/dashboard" className="underline">
-            ← Family
-          </Link>
-        </p>
-        <h1 className="mt-2 text-2xl font-semibold">Learning ledger</h1>
-        <p className="text-sm text-neutral-600">
-          Log time and completions. Verify entries as a parent.
-        </p>
-      </div>
+      <Link href="/family/dashboard">
+        <Button variant="ghost" size="sm">
+          ← Family
+        </Button>
+      </Link>
+
+      <PageHeader
+        title="Learning ledger"
+        description="Log time and completions. Verify entries as a parent."
+      />
 
       {students.length === 0 ? (
-        <p className="text-sm">
-          <Link href="/family/dashboard" className="underline">
-            Add a student
+        <EmptyState>
+          <Link href="/family/dashboard">
+            <Button variant="secondary" size="sm">
+              Add a student
+            </Button>
           </Link>{" "}
-          first.
-        </p>
+          before logging time.
+        </EmptyState>
       ) : (
         <>
-          <form onSubmit={(e) => void onSubmit(e)} className="space-y-3">
-            <label className="block text-sm">
-              Student
-              <select
-                className="mt-1 w-full border border-neutral-300 px-2 py-1.5"
-                value={selectedStudentId}
-                onChange={(e) => setStudentId(e.target.value)}
-              >
-                {students.map((s) => (
-                  <option key={s._id} value={s._id}>
-                    {s.displayName}
-                  </option>
-                ))}
-              </select>
-            </label>
+          <Section title={editLogId ? "Edit log entry" : "New log entry"}>
+            <Card>
+              <form onSubmit={(e) => void onSubmit(e)} className="space-y-4">
+                <Row gap="sm">
+                  <Col span={12} md={6}>
+                    <Select
+                      label="Student"
+                      value={selectedStudentId}
+                      onChange={(e) => setStudentId(e.target.value)}
+                    >
+                      {students.map((s) => (
+                        <option key={s._id} value={s._id}>
+                          {s.displayName}
+                        </option>
+                      ))}
+                    </Select>
+                  </Col>
+                  <Col span={12} md={6}>
+                    <Select
+                      label="Entry type"
+                      value={entryType}
+                      onChange={(e) =>
+                        setEntryType(e.target.value as EntryType)
+                      }
+                    >
+                      <option value="external_time">External time</option>
+                      <option value="native_completion">Native completion</option>
+                      <option value="manual">Manual</option>
+                    </Select>
+                  </Col>
+                </Row>
 
-            <label className="block text-sm">
-              Entry type
-              <select
-                className="mt-1 w-full border border-neutral-300 px-2 py-1.5"
-                value={entryType}
-                onChange={(e) => setEntryType(e.target.value as EntryType)}
-              >
-                <option value="external_time">External time</option>
-                <option value="native_completion">Native completion</option>
-                <option value="manual">Manual</option>
-              </select>
-            </label>
+                <Row gap="sm">
+                  <Col span={12} md={6}>
+                    <Select
+                      label="Course (optional)"
+                      value={courseId}
+                      onChange={(e) => setCourseId(e.target.value)}
+                    >
+                      <option value="">None</option>
+                      {(courses ?? []).map((c) => (
+                        <option key={c._id} value={c._id}>
+                          {c.title}
+                        </option>
+                      ))}
+                    </Select>
+                  </Col>
+                  <Col span={12} md={6}>
+                    <Select
+                      label="Subject (optional)"
+                      value={subjectId}
+                      onChange={(e) => setSubjectId(e.target.value)}
+                    >
+                      <option value="">None</option>
+                      {(subjects ?? []).map((s) => (
+                        <option key={s._id} value={s._id}>
+                          {s.name}
+                        </option>
+                      ))}
+                    </Select>
+                  </Col>
+                </Row>
 
-            <label className="block text-sm">
-              Course (optional)
-              <select
-                className="mt-1 w-full border border-neutral-300 px-2 py-1.5"
-                value={courseId}
-                onChange={(e) => setCourseId(e.target.value)}
-              >
-                <option value="">None</option>
-                {(courses ?? []).map((c) => (
-                  <option key={c._id} value={c._id}>
-                    {c.title}
-                  </option>
-                ))}
-              </select>
-            </label>
+                <Input
+                  label="Duration (minutes)"
+                  type="number"
+                  min={1}
+                  value={durationMinutes}
+                  onChange={(e) => setDurationMinutes(e.target.value)}
+                  required
+                />
 
-            <label className="block text-sm">
-              Subject (optional)
-              <select
-                className="mt-1 w-full border border-neutral-300 px-2 py-1.5"
-                value={subjectId}
-                onChange={(e) => setSubjectId(e.target.value)}
-              >
-                <option value="">None</option>
-                {(subjects ?? []).map((s) => (
-                  <option key={s._id} value={s._id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+                <Textarea
+                  label="Notes"
+                  rows={3}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="What did they work on?"
+                />
 
-            <label className="block text-sm">
-              Duration (minutes)
-              <input
-                type="number"
-                min={1}
-                className="mt-1 w-full border border-neutral-300 px-2 py-1.5"
-                value={durationMinutes}
-                onChange={(e) => setDurationMinutes(e.target.value)}
-                required
-              />
-            </label>
+                {!editLogId && (
+                  <label className="block text-sm font-medium text-[var(--muted)]">
+                    Attachment (optional)
+                    <input
+                      type="file"
+                      className="mt-1.5 block w-full text-sm text-[var(--foreground)] file:mr-3 file:rounded-[var(--radius-sm)] file:border-0 file:bg-[var(--accent-soft)] file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-[var(--accent)]"
+                      onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                    />
+                  </label>
+                )}
 
-            <label className="block text-sm">
-              Notes
-              <textarea
-                className="mt-1 w-full border border-neutral-300 px-2 py-1.5"
-                rows={3}
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="What did they work on?"
-              />
-            </label>
+                <Message tone="error">{error}</Message>
 
-            <label className="block text-sm">
-              Attachment (optional)
-              <input
-                type="file"
-                className="mt-1 block w-full text-sm"
-                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              />
-            </label>
+                <div className="flex gap-2">
+                  <Button type="submit" disabled={saving}>
+                    {saving
+                      ? "Saving…"
+                      : editLogId
+                        ? "Update log"
+                        : "Save log"}
+                  </Button>
+                  {editLogId && (
+                    <Button
+                      variant="ghost"
+                      onClick={() => {
+                        setEditLogId("");
+                        setNotes("");
+                        setDurationMinutes("30");
+                      }}
+                    >
+                      Cancel edit
+                    </Button>
+                  )}
+                </div>
+              </form>
+            </Card>
+          </Section>
 
-            {error && <p className="text-sm text-red-700">{error}</p>}
-
-            <button
-              type="submit"
-              disabled={saving}
-              className="border border-neutral-900 bg-neutral-900 px-3 py-1.5 text-sm text-white disabled:opacity-50"
-            >
-              {saving
-                ? "Saving…"
-                : editLogId
-                  ? "Update log"
-                  : "Save log"}
-            </button>
-            {editLogId && (
-              <button
-                type="button"
-                className="ml-2 border border-neutral-400 px-3 py-1.5 text-sm"
-                onClick={() => {
-                  setEditLogId("");
-                  setNotes("");
-                  setDurationMinutes("30");
-                }}
-              >
-                Cancel edit
-              </button>
-            )}
-          </form>
-
-          <div>
-            <h2 className="mb-2 text-lg font-medium">Recent logs</h2>
+          <Section title="Recent logs">
             {logs === undefined ? (
-              <p className="text-sm text-neutral-500">Loading…</p>
+              <p className="text-sm text-[var(--muted)]">Loading…</p>
             ) : logs.length === 0 ? (
-              <p className="text-sm text-neutral-500">No logs yet.</p>
+              <EmptyState>No logs yet.</EmptyState>
             ) : (
-              <ul className="space-y-2 text-sm">
+              <ul className="space-y-2">
                 {logs.map((log) => (
-                  <li
-                    key={log._id}
-                    className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-100 py-2"
-                  >
-                    <span>
-                      <span className="font-medium">
+                  <li key={log._id} className="list-row">
+                    <div className="min-w-0 text-sm">
+                      <span className="font-medium text-[var(--foreground)]">
                         {log.durationMinutes} min
                       </span>
-                      {" · "}
-                      {log.entryType.replaceAll("_", " ")}
-                      {log.notes ? ` — ${log.notes}` : ""}
-                      {log.storageId ? " · file attached" : ""}
-                      {log.verifiedByParent ? " · verified" : ""}
-                    </span>
-                    <span className="flex gap-3 text-xs">
-                      <button
-                        type="button"
-                        className="underline"
+                      <span className="text-[var(--muted)]">
+                        {" · "}
+                        {log.entryType.replaceAll("_", " ")}
+                        {log.notes ? ` — ${log.notes}` : ""}
+                        {log.storageId ? " · file attached" : ""}
+                      </span>
+                      {log.verifiedByParent && (
+                        <Badge tone="success" className="ml-2">
+                          verified
+                        </Badge>
+                      )}
+                    </div>
+                    <span className="flex flex-wrap gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={() => {
                           setEditLogId(log._id);
                           setDurationMinutes(String(log.durationMinutes));
@@ -288,10 +306,10 @@ export default function FamilyLedgerPage() {
                         }}
                       >
                         Edit
-                      </button>
-                      <button
-                        type="button"
-                        className="underline text-red-700"
+                      </Button>
+                      <Button
+                        variant="danger"
+                        size="sm"
                         onClick={() => {
                           if (!window.confirm("Delete this log entry?")) return;
                           void removeLog({ logId: log._id }).catch((err) =>
@@ -302,11 +320,11 @@ export default function FamilyLedgerPage() {
                         }}
                       >
                         Delete
-                      </button>
+                      </Button>
                       {!log.verifiedByParent ? (
-                        <button
-                          type="button"
-                          className="underline"
+                        <Button
+                          variant="secondary"
+                          size="sm"
                           onClick={() =>
                             void verify({ logId: log._id }).catch((err) =>
                               setError(
@@ -316,11 +334,11 @@ export default function FamilyLedgerPage() {
                           }
                         >
                           Verify
-                        </button>
+                        </Button>
                       ) : (
-                        <button
-                          type="button"
-                          className="underline"
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           onClick={() =>
                             void unverify({ logId: log._id }).catch((err) =>
                               setError(
@@ -330,16 +348,18 @@ export default function FamilyLedgerPage() {
                           }
                         >
                           Unverify
-                        </button>
+                        </Button>
                       )}
                     </span>
                   </li>
                 ))}
               </ul>
             )}
-          </div>
+          </Section>
         </>
       )}
+
+      <Message tone="success">{message}</Message>
     </div>
   );
 }

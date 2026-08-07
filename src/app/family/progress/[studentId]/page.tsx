@@ -6,6 +6,7 @@ import { useQuery } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
 import { StudentProgressCharts } from "@/components/StudentProgressCharts";
+import { Button, PageHeader, Card } from "@/components/ui";
 
 export default function StudentProgressDashboardPage({
   params,
@@ -18,56 +19,57 @@ export default function StudentProgressDashboardPage({
   const student = useQuery(api.students.get, { studentId });
 
   if (student === undefined) {
-    return <p className="text-sm text-neutral-500">Loading…</p>;
+    return <p className="text-sm text-[var(--muted)]">Loading…</p>;
   }
 
   if (student === null) {
     return (
-      <div className="space-y-3">
-        <p className="text-sm">
-          <Link href="/family/progress" className="underline">
+      <div className="space-y-6">
+        <Link href="/family/progress">
+          <Button variant="ghost" size="sm">
             ← Progress
-          </Link>
-        </p>
-        <h1 className="text-2xl font-semibold">Student not found</h1>
-        <p className="text-sm text-neutral-600">
-          You may not have access to this student profile.
-        </p>
+          </Button>
+        </Link>
+        <PageHeader
+          title="Student not found"
+          description="You may not have access to this student profile."
+        />
       </div>
     );
   }
 
   return (
     <div className="space-y-8">
-      <div>
-        <p className="text-sm">
-          <Link href="/family/progress" className="underline">
+      <div className="flex flex-wrap items-center gap-2">
+        <Link href="/family/progress">
+          <Button variant="ghost" size="sm">
             ← Progress
-          </Link>
-          {" · "}
-          <Link href="/family/dashboard" className="underline">
+          </Button>
+        </Link>
+        <Link href="/family/dashboard">
+          <Button variant="ghost" size="sm">
             Family
-          </Link>
-          {" · "}
-          <Link
-            href={`/student/dashboard?as=${student._id}`}
-            className="underline"
-          >
+          </Button>
+        </Link>
+        <Link href={`/student/dashboard?as=${student._id}`}>
+          <Button variant="secondary" size="sm">
             View as student
-          </Link>
-        </p>
-        <h1 className="mt-2 text-2xl font-semibold">
-          {student.displayName}
-        </h1>
-        <p className="text-sm text-neutral-600">
-          {student.academicLevel ?? "Student"} · progress dashboard
-        </p>
+          </Button>
+        </Link>
       </div>
 
-      <StudentProgressCharts
-        studentId={student._id}
-        defaultRangeDays={30}
+      <PageHeader
+        eyebrow="Progress dashboard"
+        title={student.displayName}
+        description={`${student.academicLevel ?? "Student"} · learning charts and totals`}
       />
+
+      <Card padding="lg">
+        <StudentProgressCharts
+          studentId={student._id}
+          defaultRangeDays={30}
+        />
+      </Card>
     </div>
   );
 }

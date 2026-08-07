@@ -16,12 +16,21 @@ import {
 } from "recharts";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
+import { Button, Section, Card } from "@/components/ui";
 
-const CHART_INK = "#262626";
-const CHART_MUTED = "#a3a3a3";
-const CHART_ACCENT = "#0f766e";
-const CHART_SECONDARY = "#57534e";
+const CHART_ACCENT = "#0e7490";
+const CHART_MUTED = "var(--border-strong)";
+const CHART_SECONDARY = "var(--muted)";
+const CHART_INK = "var(--foreground)";
 const CHART_TERTIARY = "#a8a29e";
+
+const tooltipStyle = {
+  border: "1px solid var(--border)",
+  background: "var(--surface)",
+  borderRadius: "var(--radius-md)",
+  fontSize: 12,
+  boxShadow: "var(--shadow-sm)",
+};
 
 type RangeDays = 14 | 30;
 
@@ -58,7 +67,7 @@ export function StudentProgressCharts({
   });
 
   if (data === undefined) {
-    return <p className="text-sm text-neutral-500">Loading charts…</p>;
+    return <p className="text-sm text-[var(--muted)]">Loading charts…</p>;
   }
 
   const timeSeries = data.timeSeries.map((point) => ({
@@ -82,140 +91,70 @@ export function StudentProgressCharts({
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           {title ? (
-            <h2 className="text-lg font-medium">{title}</h2>
+            <h2 className="font-display text-lg font-semibold tracking-tight">
+              {title}
+            </h2>
           ) : null}
-          <p className="text-sm text-neutral-600">
+          <p className="text-sm text-[var(--muted)]">
             Last {rangeDays} days of logged learning.
           </p>
         </div>
-        <div className="flex gap-2 text-sm">
+        <div className="flex gap-2">
           {([14, 30] as const).map((days) => (
-            <button
+            <Button
               key={days}
-              type="button"
+              variant={rangeDays === days ? "primary" : "secondary"}
+              size="sm"
               onClick={() => setRangeDays(days)}
-              className={
-                rangeDays === days
-                  ? "border border-neutral-900 bg-neutral-900 px-2.5 py-1 text-white"
-                  : "border border-neutral-300 px-2.5 py-1 text-neutral-700"
-              }
             >
               {days}d
-            </button>
+            </Button>
           ))}
         </div>
       </div>
 
-      <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-4">
-        <div>
-          <dt className="text-neutral-500">Total minutes</dt>
-          <dd className="text-xl font-semibold tabular-nums">
-            {data.totals.totalMinutes}
-          </dd>
-        </div>
-        <div>
-          <dt className="text-neutral-500">Verified</dt>
-          <dd className="text-xl font-semibold tabular-nums">
-            {data.totals.verifiedMinutes}
-          </dd>
-        </div>
-        <div>
-          <dt className="text-neutral-500">Entries</dt>
-          <dd className="text-xl font-semibold tabular-nums">
-            {data.totals.entryCount}
-          </dd>
-        </div>
-        <div>
-          <dt className="text-neutral-500">Streak / days logged</dt>
-          <dd className="text-xl font-semibold tabular-nums">
-            {data.totals.streak}
-            <span className="text-base font-normal text-neutral-500">
-              {" "}
-              / {data.totals.daysLogged}
-            </span>
-          </dd>
-        </div>
+      <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        {[
+          { label: "Total minutes", value: data.totals.totalMinutes },
+          { label: "Verified", value: data.totals.verifiedMinutes },
+          { label: "Entries", value: data.totals.entryCount },
+          {
+            label: "Streak / days logged",
+            value: (
+              <>
+                {data.totals.streak}
+                <span className="text-base font-normal text-[var(--muted)]">
+                  {" "}
+                  / {data.totals.daysLogged}
+                </span>
+              </>
+            ),
+          },
+        ].map(({ label, value }) => (
+          <Card key={label} padding="sm" className="text-center sm:text-left">
+            <dt className="text-xs font-medium uppercase tracking-wide text-[var(--muted)]">
+              {label}
+            </dt>
+            <dd className="mt-1 font-display text-2xl font-semibold tabular-nums text-[var(--foreground)]">
+              {value}
+            </dd>
+          </Card>
+        ))}
       </dl>
 
-      <section className="space-y-2">
-        <h3 className="text-sm font-medium text-neutral-800">
-          Minutes over time
-        </h3>
-        <div className="h-56 w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={timeSeries} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-              <CartesianGrid stroke={CHART_MUTED} strokeDasharray="3 3" vertical={false} />
-              <XAxis
-                dataKey="label"
-                tick={{ fill: CHART_SECONDARY, fontSize: 11 }}
-                tickLine={false}
-                axisLine={{ stroke: CHART_MUTED }}
-                interval="preserveStartEnd"
-                minTickGap={28}
-              />
-              <YAxis
-                tick={{ fill: CHART_SECONDARY, fontSize: 11 }}
-                tickLine={false}
-                axisLine={false}
-                width={36}
-              />
-              <Tooltip
-                contentStyle={{
-                  border: "1px solid #d4d4d4",
-                  background: "#fff",
-                  fontSize: 12,
-                }}
-                labelFormatter={(_, payload) =>
-                  payload?.[0]?.payload?.date
-                    ? String(payload[0].payload.date)
-                    : ""
-                }
-              />
-              <Legend wrapperStyle={{ fontSize: 12 }} />
-              <Line
-                type="monotone"
-                dataKey="minutes"
-                name="Minutes"
-                stroke={CHART_ACCENT}
-                strokeWidth={2}
-                dot={false}
-                activeDot={{ r: 4 }}
-              />
-              <Line
-                type="monotone"
-                dataKey="verifiedMinutes"
-                name="Verified"
-                stroke={CHART_SECONDARY}
-                strokeWidth={1.5}
-                strokeDasharray="4 4"
-                dot={false}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      </section>
-
-      <div className="grid gap-8 lg:grid-cols-2">
-        <section className="space-y-2">
-          <h3 className="text-sm font-medium text-neutral-800">
-            Minutes by subject
-          </h3>
+      <Section title="Minutes over time">
+        <Card padding="sm">
           <div className="h-56 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={subjectBars}
-                margin={{ top: 8, right: 8, left: 0, bottom: 24 }}
-              >
+              <LineChart data={timeSeries} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                 <CartesianGrid stroke={CHART_MUTED} strokeDasharray="3 3" vertical={false} />
                 <XAxis
-                  dataKey="name"
+                  dataKey="label"
                   tick={{ fill: CHART_SECONDARY, fontSize: 11 }}
                   tickLine={false}
                   axisLine={{ stroke: CHART_MUTED }}
-                  interval={0}
-                  angle={-20}
-                  textAnchor="end"
-                  height={48}
+                  interval="preserveStartEnd"
+                  minTickGap={28}
                 />
                 <YAxis
                   tick={{ fill: CHART_SECONDARY, fontSize: 11 }}
@@ -224,25 +163,104 @@ export function StudentProgressCharts({
                   width={36}
                 />
                 <Tooltip
-                  contentStyle={{
-                    border: "1px solid #d4d4d4",
-                    background: "#fff",
-                    fontSize: 12,
-                  }}
+                  contentStyle={tooltipStyle}
+                  labelFormatter={(_, payload) =>
+                    payload?.[0]?.payload?.date
+                      ? String(payload[0].payload.date)
+                      : ""
+                  }
                 />
-                <Bar dataKey="minutes" name="Minutes" fill={CHART_ACCENT} radius={[2, 2, 0, 0]} />
-              </BarChart>
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                <Line
+                  type="monotone"
+                  dataKey="minutes"
+                  name="Minutes"
+                  stroke={CHART_ACCENT}
+                  strokeWidth={2}
+                  dot={false}
+                  activeDot={{ r: 4 }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="verifiedMinutes"
+                  name="Verified"
+                  stroke={CHART_TERTIARY}
+                  strokeWidth={1.5}
+                  strokeDasharray="4 4"
+                  dot={false}
+                />
+              </LineChart>
             </ResponsiveContainer>
           </div>
-        </section>
+        </Card>
+      </Section>
 
-        <section className="space-y-2">
-          <h3 className="text-sm font-medium text-neutral-800">
-            Minutes by entry type
-          </h3>
-          <div className="h-56 w-full">
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Section title="Minutes by subject">
+          <Card padding="sm">
+            <div className="h-56 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={subjectBars}
+                  margin={{ top: 8, right: 8, left: 0, bottom: 24 }}
+                >
+                  <CartesianGrid stroke={CHART_MUTED} strokeDasharray="3 3" vertical={false} />
+                  <XAxis
+                    dataKey="name"
+                    tick={{ fill: CHART_SECONDARY, fontSize: 11 }}
+                    tickLine={false}
+                    axisLine={{ stroke: CHART_MUTED }}
+                    interval={0}
+                    angle={-20}
+                    textAnchor="end"
+                    height={48}
+                  />
+                  <YAxis
+                    tick={{ fill: CHART_SECONDARY, fontSize: 11 }}
+                    tickLine={false}
+                    axisLine={false}
+                    width={36}
+                  />
+                  <Tooltip contentStyle={tooltipStyle} />
+                  <Bar dataKey="minutes" name="Minutes" fill={CHART_ACCENT} radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
+        </Section>
+
+        <Section title="Minutes by entry type">
+          <Card padding="sm">
+            <div className="h-56 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={entryBars} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                  <CartesianGrid stroke={CHART_MUTED} strokeDasharray="3 3" vertical={false} />
+                  <XAxis
+                    dataKey="label"
+                    tick={{ fill: CHART_SECONDARY, fontSize: 11 }}
+                    tickLine={false}
+                    axisLine={{ stroke: CHART_MUTED }}
+                  />
+                  <YAxis
+                    tick={{ fill: CHART_SECONDARY, fontSize: 11 }}
+                    tickLine={false}
+                    axisLine={false}
+                    width={36}
+                  />
+                  <Tooltip contentStyle={tooltipStyle} />
+                  <Bar dataKey="minutes" name="Minutes" fill={CHART_INK} radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
+        </Section>
+      </div>
+
+      <Section title="Verified vs unverified">
+        <Card padding="sm" className="max-w-md">
+          <div className="h-44 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={entryBars} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+              <BarChart data={verifiedBars} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                 <CartesianGrid stroke={CHART_MUTED} strokeDasharray="3 3" vertical={false} />
                 <XAxis
                   dataKey="label"
@@ -256,52 +274,13 @@ export function StudentProgressCharts({
                   axisLine={false}
                   width={36}
                 />
-                <Tooltip
-                  contentStyle={{
-                    border: "1px solid #d4d4d4",
-                    background: "#fff",
-                    fontSize: 12,
-                  }}
-                />
-                <Bar dataKey="minutes" name="Minutes" fill={CHART_INK} radius={[2, 2, 0, 0]} />
+                <Tooltip contentStyle={tooltipStyle} />
+                <Bar dataKey="minutes" name="Minutes" fill={CHART_TERTIARY} radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
-        </section>
-      </div>
-
-      <section className="space-y-2">
-        <h3 className="text-sm font-medium text-neutral-800">
-          Verified vs unverified
-        </h3>
-        <div className="h-44 w-full max-w-md">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={verifiedBars} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-              <CartesianGrid stroke={CHART_MUTED} strokeDasharray="3 3" vertical={false} />
-              <XAxis
-                dataKey="label"
-                tick={{ fill: CHART_SECONDARY, fontSize: 11 }}
-                tickLine={false}
-                axisLine={{ stroke: CHART_MUTED }}
-              />
-              <YAxis
-                tick={{ fill: CHART_SECONDARY, fontSize: 11 }}
-                tickLine={false}
-                axisLine={false}
-                width={36}
-              />
-              <Tooltip
-                contentStyle={{
-                  border: "1px solid #d4d4d4",
-                  background: "#fff",
-                  fontSize: 12,
-                }}
-              />
-              <Bar dataKey="minutes" name="Minutes" fill={CHART_TERTIARY} radius={[2, 2, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </section>
+        </Card>
+      </Section>
     </div>
   );
 }

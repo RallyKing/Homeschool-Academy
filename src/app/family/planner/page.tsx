@@ -5,6 +5,19 @@ import { FormEvent, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
+import {
+  Button,
+  Input,
+  Select,
+  Section,
+  Card,
+  PageHeader,
+  Badge,
+  EmptyState,
+  Message,
+  Row,
+  Col,
+} from "@/components/ui";
 
 function isoDate(d: Date) {
   return d.toISOString().slice(0, 10);
@@ -21,6 +34,21 @@ function weekRange() {
 }
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function statusTone(
+  status: string,
+): "neutral" | "accent" | "success" | "warning" {
+  switch (status) {
+    case "approved":
+      return "success";
+    case "pending_approval":
+      return "warning";
+    case "draft":
+      return "accent";
+    default:
+      return "neutral";
+  }
+}
 
 export default function FamilyPlannerPage() {
   const students = useQuery(api.students.listForMyFamily);
@@ -111,292 +139,290 @@ export default function FamilyPlannerPage() {
           : undefined,
       });
       setItemTitle("");
+      setMessage("Item added.");
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Failed");
     }
   }
 
   if (students === undefined) {
-    return <p className="text-sm text-neutral-500">Loading…</p>;
+    return <p className="text-sm text-[var(--muted)]">Loading…</p>;
   }
 
   return (
     <div className="space-y-8">
-      <div>
-        <p className="text-sm">
-          <Link href="/family/dashboard" className="underline">
-            ← Family
-          </Link>
-        </p>
-        <h1 className="mt-2 text-2xl font-semibold">Weekly planner</h1>
-        <p className="text-sm text-neutral-600">
-          Draft → request approval → approve. Students can request revision.
-        </p>
-      </div>
+      <Link href="/family/dashboard">
+        <Button variant="ghost" size="sm">
+          ← Family
+        </Button>
+      </Link>
+
+      <PageHeader
+        title="Weekly planner"
+        description="Draft → request approval → approve. Students can request revision."
+      />
 
       {students.length === 0 ? (
-        <p className="text-sm">
-          <Link href="/family/dashboard" className="underline">
-            Add a student
+        <EmptyState>
+          <Link href="/family/dashboard">
+            <Button variant="secondary" size="sm">
+              Add a student
+            </Button>
           </Link>{" "}
-          first.
-        </p>
+          to start planning.
+        </EmptyState>
       ) : (
         <>
-          <label className="block text-sm">
-            Student
-            <select
-              className="mt-1 w-full border border-neutral-300 px-2 py-1.5"
-              value={selectedStudentId}
-              onChange={(e) => {
-                setStudentId(e.target.value);
-                setActiveSchedule("");
-              }}
-            >
-              {students.map((s) => (
-                <option key={s._id} value={s._id}>
-                  {s.displayName}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <form onSubmit={(e) => void createWeek(e)}>
-            <button
-              type="submit"
-              className="border border-neutral-900 bg-neutral-900 px-3 py-1.5 text-sm text-white"
-            >
-              Create draft for this week
-            </button>
-          </form>
-
-          <ul className="space-y-2 text-sm">
-            {schedules === undefined ? (
-              <li>Loading…</li>
-            ) : schedules.length === 0 ? (
-              <li className="text-neutral-500">No schedules yet.</li>
-            ) : (
-              schedules.map((s) => (
-                <li
-                  key={s._id}
-                  className="flex flex-wrap items-center gap-2 border-b border-neutral-100 py-2"
+          <Card>
+            <Row gap="sm">
+              <Col span={12} md={6}>
+                <Select
+                  label="Student"
+                  value={selectedStudentId}
+                  onChange={(e) => {
+                    setStudentId(e.target.value);
+                    setActiveSchedule("");
+                  }}
                 >
-                  <button
-                    type="button"
-                    className={
-                      scheduleId === s._id ? "font-medium underline" : ""
-                    }
-                    onClick={() => setActiveSchedule(s._id)}
-                  >
-                    {s.weekStart} → {s.weekEnd}
-                  </button>
-                  <span className="bg-neutral-100 px-1.5 py-0.5 text-xs uppercase tracking-wide">
-                    {s.status}
-                  </span>
-                  {s.status === "draft" && (
+                  {students.map((s) => (
+                    <option key={s._id} value={s._id}>
+                      {s.displayName}
+                    </option>
+                  ))}
+                </Select>
+              </Col>
+              <Col span={12} md={6} className="flex items-end">
+                <form onSubmit={(e) => void createWeek(e)} className="w-full">
+                  <Button type="submit" className="w-full md:w-auto">
+                    Create draft for this week
+                  </Button>
+                </form>
+              </Col>
+            </Row>
+          </Card>
+
+          <Section title="Schedules">
+            {schedules === undefined ? (
+              <p className="text-sm text-[var(--muted)]">Loading…</p>
+            ) : schedules.length === 0 ? (
+              <EmptyState>No schedules yet — create a draft above.</EmptyState>
+            ) : (
+              <ul className="space-y-2">
+                {schedules.map((s) => (
+                  <li key={s._id} className="list-row">
                     <button
                       type="button"
-                      className="text-xs underline"
-                      onClick={() =>
-                        void requestApproval({ scheduleId: s._id }).catch(
-                          (err) =>
-                            setMessage(
-                              err instanceof Error ? err.message : "Failed",
-                            ),
-                        )
-                      }
+                      className={`text-sm ${scheduleId === s._id ? "font-semibold text-[var(--accent)]" : "text-[var(--foreground)]"}`}
+                      onClick={() => setActiveSchedule(s._id)}
                     >
-                      Request approval
+                      {s.weekStart} → {s.weekEnd}
                     </button>
-                  )}
-                  {s.status === "pending_approval" && (
-                    <button
-                      type="button"
-                      className="text-xs underline"
-                      onClick={() =>
-                        void approve({ scheduleId: s._id }).catch((err) =>
-                          setMessage(
-                            err instanceof Error ? err.message : "Failed",
-                          ),
-                        )
-                      }
-                    >
-                      Approve
-                    </button>
-                  )}
-                  {(s.status === "approved" ||
-                    s.status === "pending_approval") && (
-                    <button
-                      type="button"
-                      className="text-xs underline"
-                      onClick={() =>
-                        void requestRevision({ scheduleId: s._id }).catch(
-                          (err) =>
-                            setMessage(
-                              err instanceof Error ? err.message : "Failed",
-                            ),
-                        )
-                      }
-                    >
-                      Request revision
-                    </button>
-                  )}
-                  {s.status !== "approved" && (
-                    <button
-                      type="button"
-                      className="text-xs underline"
-                      onClick={() => {
-                        const start = window.prompt(
-                          "Week start (YYYY-MM-DD)",
-                          s.weekStart,
-                        );
-                        if (!start) return;
-                        const end = window.prompt(
-                          "Week end (YYYY-MM-DD)",
-                          s.weekEnd,
-                        );
-                        if (!end) return;
-                        void updateSchedule({
-                          scheduleId: s._id,
-                          weekStart: start,
-                          weekEnd: end,
-                        })
-                          .then(() => setMessage("Schedule dates updated."))
-                          .catch((err) =>
-                            setMessage(
-                              err instanceof Error ? err.message : "Failed",
-                            ),
-                          );
-                      }}
-                    >
-                      Edit dates
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    className="text-xs underline text-red-700"
-                    onClick={() => {
-                      if (
-                        !window.confirm(
-                          "Delete this schedule and all its items?",
-                        )
-                      ) {
-                        return;
-                      }
-                      void removeSchedule({ scheduleId: s._id })
-                        .then(() => {
-                          if (activeSchedule === s._id) setActiveSchedule("");
-                          setMessage("Schedule deleted.");
-                        })
-                        .catch((err) =>
-                          setMessage(
-                            err instanceof Error ? err.message : "Failed",
-                          ),
-                        );
-                    }}
-                  >
-                    Delete
-                  </button>
-                </li>
-              ))
+                    <span className="flex flex-wrap items-center gap-2">
+                      <Badge tone={statusTone(s.status)}>{s.status}</Badge>
+                      {s.status === "draft" && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() =>
+                            void requestApproval({ scheduleId: s._id }).catch(
+                              (err) =>
+                                setMessage(
+                                  err instanceof Error ? err.message : "Failed",
+                                ),
+                            )
+                          }
+                        >
+                          Request approval
+                        </Button>
+                      )}
+                      {s.status === "pending_approval" && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() =>
+                            void approve({ scheduleId: s._id }).catch((err) =>
+                              setMessage(
+                                err instanceof Error ? err.message : "Failed",
+                              ),
+                            )
+                          }
+                        >
+                          Approve
+                        </Button>
+                      )}
+                      {(s.status === "approved" ||
+                        s.status === "pending_approval") && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() =>
+                            void requestRevision({ scheduleId: s._id }).catch(
+                              (err) =>
+                                setMessage(
+                                  err instanceof Error ? err.message : "Failed",
+                                ),
+                            )
+                          }
+                        >
+                          Request revision
+                        </Button>
+                      )}
+                      {s.status !== "approved" && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            const start = window.prompt(
+                              "Week start (YYYY-MM-DD)",
+                              s.weekStart,
+                            );
+                            if (!start) return;
+                            const end = window.prompt(
+                              "Week end (YYYY-MM-DD)",
+                              s.weekEnd,
+                            );
+                            if (!end) return;
+                            void updateSchedule({
+                              scheduleId: s._id,
+                              weekStart: start,
+                              weekEnd: end,
+                            })
+                              .then(() => setMessage("Schedule dates updated."))
+                              .catch((err) =>
+                                setMessage(
+                                  err instanceof Error ? err.message : "Failed",
+                                ),
+                              );
+                          }}
+                        >
+                          Edit dates
+                        </Button>
+                      )}
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        onClick={() => {
+                          if (
+                            !window.confirm(
+                              "Delete this schedule and all its items?",
+                            )
+                          ) {
+                            return;
+                          }
+                          void removeSchedule({ scheduleId: s._id })
+                            .then(() => {
+                              if (activeSchedule === s._id) setActiveSchedule("");
+                              setMessage("Schedule deleted.");
+                            })
+                            .catch((err) =>
+                              setMessage(
+                                err instanceof Error ? err.message : "Failed",
+                              ),
+                            );
+                        }}
+                      >
+                        Delete
+                      </Button>
+                    </span>
+                  </li>
+                ))}
+              </ul>
             )}
-          </ul>
+          </Section>
 
           {scheduleId && active && active.status !== "approved" && (
-            <form
-              onSubmit={(e) => void onAddItem(e)}
-              className="space-y-2 border-t border-neutral-200 pt-4"
+            <Section
+              title={editItemId ? "Edit schedule item" : "Add schedule item"}
             >
-              <h2 className="text-lg font-medium">
-                {editItemId ? "Edit schedule item" : "Add schedule item"}
-              </h2>
-              <input
-                className="w-full border border-neutral-300 px-2 py-1.5 text-sm"
-                placeholder="Title"
-                value={itemTitle}
-                onChange={(e) => setItemTitle(e.target.value)}
-                required
-              />
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <input
-                  type="number"
-                  min={1}
-                  className="border border-neutral-300 px-2 py-1.5 text-sm sm:w-28"
-                  value={itemMinutes}
-                  onChange={(e) => setItemMinutes(e.target.value)}
-                />
-                <select
-                  className="border border-neutral-300 px-2 py-1.5 text-sm"
-                  value={itemDay}
-                  onChange={(e) => setItemDay(e.target.value)}
-                >
-                  {DAYS.map((d, i) => (
-                    <option key={d} value={i}>
-                      {d}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  className="flex-1 border border-neutral-300 px-2 py-1.5 text-sm"
-                  value={itemCourse}
-                  onChange={(e) => setItemCourse(e.target.value)}
-                >
-                  <option value="">No course</option>
-                  {(courses ?? []).map((c) => (
-                    <option key={c._id} value={c._id}>
-                      {c.title}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  type="submit"
-                  className="border border-neutral-400 px-3 py-1.5 text-sm"
-                >
-                  {editItemId ? "Save item" : "Add item"}
-                </button>
-                {editItemId && (
-                  <button
-                    type="button"
-                    className="border border-neutral-400 px-3 py-1.5 text-sm"
-                    onClick={() => {
-                      setEditItemId("");
-                      setItemTitle("");
-                    }}
-                  >
-                    Cancel
-                  </button>
-                )}
-              </div>
-            </form>
+              <Card>
+                <form onSubmit={(e) => void onAddItem(e)} className="space-y-4">
+                  <Input
+                    label="Title"
+                    placeholder="Activity title"
+                    value={itemTitle}
+                    onChange={(e) => setItemTitle(e.target.value)}
+                    required
+                  />
+                  <Row gap="sm">
+                    <Col span={12} md={4}>
+                      <Input
+                        label="Minutes"
+                        type="number"
+                        min={1}
+                        value={itemMinutes}
+                        onChange={(e) => setItemMinutes(e.target.value)}
+                      />
+                    </Col>
+                    <Col span={12} md={4}>
+                      <Select
+                        label="Day"
+                        value={itemDay}
+                        onChange={(e) => setItemDay(e.target.value)}
+                      >
+                        {DAYS.map((d, i) => (
+                          <option key={d} value={i}>
+                            {d}
+                          </option>
+                        ))}
+                      </Select>
+                    </Col>
+                    <Col span={12} md={4}>
+                      <Select
+                        label="Course"
+                        value={itemCourse}
+                        onChange={(e) => setItemCourse(e.target.value)}
+                      >
+                        <option value="">No course</option>
+                        {(courses ?? []).map((c) => (
+                          <option key={c._id} value={c._id}>
+                            {c.title}
+                          </option>
+                        ))}
+                      </Select>
+                    </Col>
+                  </Row>
+                  <div className="flex gap-2">
+                    <Button type="submit" variant="secondary">
+                      {editItemId ? "Save item" : "Add item"}
+                    </Button>
+                    {editItemId && (
+                      <Button
+                        variant="ghost"
+                        onClick={() => {
+                          setEditItemId("");
+                          setItemTitle("");
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                    )}
+                  </div>
+                </form>
+              </Card>
+            </Section>
           )}
 
           {scheduleId && (
-            <section className="space-y-2">
-              <h2 className="text-lg font-medium">Items</h2>
-              <ul className="text-sm">
-                {items === undefined ? (
-                  <li>Loading…</li>
-                ) : items.length === 0 ? (
-                  <li className="text-neutral-500">No items yet.</li>
-                ) : (
-                  items.map((item) => (
-                    <li
-                      key={item._id}
-                      className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-100 py-2"
-                    >
-                      <span>
+            <Section title="Items">
+              {items === undefined ? (
+                <p className="text-sm text-[var(--muted)]">Loading…</p>
+              ) : items.length === 0 ? (
+                <EmptyState>No items yet.</EmptyState>
+              ) : (
+                <ul className="space-y-2">
+                  {items.map((item) => (
+                    <li key={item._id} className="list-row">
+                      <span className="text-sm text-[var(--foreground)]">
                         {item.dayOfWeek !== undefined
                           ? `${DAYS[item.dayOfWeek]} · `
                           : ""}
                         {item.title} · {item.plannedMinutes} min
                       </span>
                       {active?.status !== "approved" && (
-                        <span className="flex gap-3 text-xs">
-                          <button
-                            type="button"
-                            className="underline"
+                        <span className="flex gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             onClick={() => {
                               setEditItemId(item._id);
                               setItemTitle(item.title);
@@ -410,10 +436,10 @@ export default function FamilyPlannerPage() {
                             }}
                           >
                             Edit
-                          </button>
-                          <button
-                            type="button"
-                            className="underline text-red-700"
+                          </Button>
+                          <Button
+                            variant="danger"
+                            size="sm"
                             onClick={() =>
                               void removeItem({ itemId: item._id }).catch(
                                 (err) =>
@@ -426,19 +452,19 @@ export default function FamilyPlannerPage() {
                             }
                           >
                             Remove
-                          </button>
+                          </Button>
                         </span>
                       )}
                     </li>
-                  ))
-                )}
-              </ul>
-            </section>
+                  ))}
+                </ul>
+              )}
+            </Section>
           )}
         </>
       )}
 
-      {message && <p className="text-sm text-neutral-600">{message}</p>}
+      <Message tone="success">{message}</Message>
     </div>
   );
 }
