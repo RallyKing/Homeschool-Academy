@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import {
   Button,
@@ -37,6 +37,9 @@ function getLastSeenServerSnapshot(): number | null {
 
 export default function UpdatesPage() {
   const user = useQuery(api.users.current);
+  const seedFeatures = useMutation(api.productUpdates.seedSample);
+  const [seeding, setSeeding] = useState(false);
+  const [seedMessage, setSeedMessage] = useState<string | null>(null);
   const [now] = useState(() => Date.now());
   const lastSeen = useSyncExternalStore(
     subscribeLastSeen,
@@ -48,6 +51,7 @@ export default function UpdatesPage() {
     api.productUpdates.listPublished,
     user ? { now } : "skip",
   );
+  const isSuperAdmin = user?.role === "superAdmin";
 
   useEffect(() => {
     if (!updates || updates.length === 0) return;
@@ -80,11 +84,20 @@ export default function UpdatesPage() {
         title="What's new"
         description="Product upgrades and platform changes."
         actions={
-          <Link href="/help">
-            <Button variant="secondary" size="sm">
-              Browse help
-            </Button>
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link href="/help">
+              <Button variant="secondary" size="sm">
+                Help / Knowledge base
+              </Button>
+            </Link>
+            {isSuperAdmin && (
+              <Link href="/admin/product-updates">
+                <Button variant="ghost" size="sm">
+                  Manage updates
+                </Button>
+              </Link>
+            )}
+          </div>
         }
       />
 
@@ -97,7 +110,53 @@ export default function UpdatesPage() {
           <p className="text-sm text-[var(--muted)]">Loading…</p>
         )}
         {updates?.length === 0 && (
-          <EmptyState>No published updates yet.</EmptyState>
+          <div className="space-y-3 rounded-[var(--radius-lg)] border border-dashed border-[var(--border-strong)] bg-[var(--surface-2)] px-4 py-8 text-center">
+            <p className="text-sm text-[var(--muted)]">No updates yet.</p>
+            <p className="text-sm text-[var(--muted)]">
+              Published product updates will appear here. Browse the{" "}
+              <Link
+                href="/help"
+                className="font-medium text-[var(--accent)] underline-offset-2 hover:underline"
+              >
+                knowledge base
+              </Link>{" "}
+              for help articles.
+            </p>
+            {isSuperAdmin && (
+              <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+                <Button
+                  size="sm"
+                  disabled={seeding}
+                  onClick={() => {
+                    setSeeding(true);
+                    setSeedMessage(null);
+                    void seedFeatures()
+                      .then((r) => {
+                        setSeedMessage(
+                          `Seeded ${r.created} update${r.created === 1 ? "" : "s"} (${r.skipped} already present).`,
+                        );
+                      })
+                      .catch((err) =>
+                        setSeedMessage(
+                          err instanceof Error ? err.message : "Seed failed",
+                        ),
+                      )
+                      .finally(() => setSeeding(false));
+                  }}
+                >
+                  {seeding ? "Seeding…" : "Seed product updates"}
+                </Button>
+                <Link href="/admin/product-updates">
+                  <Button variant="secondary" size="sm">
+                    Create update
+                  </Button>
+                </Link>
+              </div>
+            )}
+            {seedMessage && (
+              <p className="text-sm text-[var(--muted)]">{seedMessage}</p>
+            )}
+          </div>
         )}
 
         <div className="space-y-4">
@@ -125,7 +184,7 @@ export default function UpdatesPage() {
                   <div className="mt-4">
                     <Link href="/help">
                       <Button variant="ghost" size="sm">
-                        Browse knowledge base
+                        Open knowledge base
                       </Button>
                     </Link>
                   </div>

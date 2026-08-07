@@ -20,8 +20,8 @@ const accountGroup: NavGroup = {
   id: "account",
   label: "Account",
   items: [
-    { href: "/updates", label: "Updates" },
-    { href: "/help", label: "Help" },
+    { href: "/updates", label: "What's new" },
+    { href: "/help", label: "Help / Knowledge base" },
   ],
 };
 
@@ -219,7 +219,7 @@ function NavDropdown({
         <div
           id={menuId}
           role="menu"
-          className="absolute right-0 z-50 mt-1.5 min-w-[11rem] overflow-hidden rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] py-1 shadow-[var(--shadow-md)] animate-fade-up"
+          className="absolute right-0 z-50 mt-1.5 min-w-[14rem] overflow-hidden rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] py-1 shadow-[var(--shadow-md)] animate-fade-up"
         >
           {group.items.map((item) => {
             const href = resolveHref(item.href);

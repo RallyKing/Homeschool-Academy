@@ -171,9 +171,7 @@ export default function AdminProductUpdatesPage() {
               void seedSample()
                 .then((r) =>
                   notify(
-                    r.created
-                      ? "Sample update + KB seeded."
-                      : "Sample skipped (published updates already exist).",
+                    `Seeded ${r.created} published update${r.created === 1 ? "" : "s"} + KB (${r.skipped} already present, ${r.total} total).`,
                     "success",
                   ),
                 )
@@ -182,7 +180,7 @@ export default function AdminProductUpdatesPage() {
                 )
             }
           >
-            Seed sample
+            Seed product updates
           </Button>
         }
       >

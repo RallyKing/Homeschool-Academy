@@ -41,20 +41,30 @@ export function WhatsNewBanner() {
 
   const updates = useQuery(
     api.productUpdates.listPublished,
-    user && lastSeen !== null ? { now, since: lastSeen } : "skip",
+    user
+      ? lastSeen !== null
+        ? { now, since: lastSeen }
+        : { now }
+      : "skip",
   );
 
-  if (!user || dismissed || lastSeen === null || !updates) return null;
-
-  const newOnes = updates.filter(
-    (u) => (u.publishedAt ?? u.createdAt) > lastSeen,
-  );
-
-  if (newOnes.length === 0) return null;
+  if (!user || dismissed || !updates) return null;
 
   if (user.role && user.role !== "parent" && user.role !== "superAdmin") {
     return null;
   }
+
+  const newOnes =
+    lastSeen === null
+      ? updates
+      : updates.filter((u) => (u.publishedAt ?? u.createdAt) > lastSeen);
+
+  if (newOnes.length === 0) return null;
+
+  const label =
+    lastSeen === null
+      ? `${newOnes.length} product update${newOnes.length === 1 ? "" : "s"} available`
+      : `${newOnes.length} new product update${newOnes.length === 1 ? "" : "s"}`;
 
   return (
     <div className="border-b border-[var(--border)] bg-[var(--accent-soft)] px-4 py-2.5 text-sm text-[var(--accent)]">
@@ -63,12 +73,19 @@ export function WhatsNewBanner() {
         className="flex flex-wrap items-center justify-between gap-2"
       >
         <p>
-          {newOnes.length} new product update{newOnes.length === 1 ? "" : "s"}.{" "}
+          {label}.{" "}
           <Link
             href="/updates"
             className="font-semibold underline-offset-2 hover:underline"
           >
             What&apos;s new
+          </Link>
+          {" · "}
+          <Link
+            href="/help"
+            className="font-semibold underline-offset-2 hover:underline"
+          >
+            Knowledge base
           </Link>
         </p>
         <button

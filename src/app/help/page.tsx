@@ -42,14 +42,23 @@ export default function HelpPage() {
       <PageHeader
         compact
         eyebrow="Support"
-        title="Help"
-        description="Knowledge base articles for each upgrade."
+        title="Knowledge base"
+        description="Help articles for product upgrades and how-to guides."
         actions={
-          <Link href="/updates">
-            <Button variant="secondary" size="sm">
-              What&apos;s new
-            </Button>
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link href="/updates">
+              <Button variant="secondary" size="sm">
+                What&apos;s new
+              </Button>
+            </Link>
+            {user.role === "superAdmin" && (
+              <Link href="/admin/knowledge-base">
+                <Button variant="ghost" size="sm">
+                  Manage KB
+                </Button>
+              </Link>
+            )}
+          </div>
         }
       />
 
@@ -57,7 +66,16 @@ export default function HelpPage() {
         <p className="text-sm text-[var(--muted)]">Loading…</p>
       )}
       {articles?.length === 0 && (
-        <EmptyState>No published articles yet.</EmptyState>
+        <EmptyState>
+          No published knowledge base articles yet. Check{" "}
+          <Link
+            href="/updates"
+            className="font-medium text-[var(--accent)] underline-offset-2 hover:underline"
+          >
+            What&apos;s new
+          </Link>{" "}
+          for product updates.
+        </EmptyState>
       )}
 
       {[...byCategory.entries()].map(([category, list]) => (
