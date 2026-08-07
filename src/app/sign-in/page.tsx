@@ -49,7 +49,7 @@ export default function SignInPage() {
           <div className="flex justify-end">
             <Link
               href="/reset-password"
-              className="text-sm font-medium text-[var(--accent)] hover:underline"
+              className="hover-link text-sm font-medium text-[var(--accent)] underline-offset-2"
             >
               Forgot password?
             </Link>
@@ -61,7 +61,7 @@ export default function SignInPage() {
         </form>
         <p className="mt-5 text-sm text-[var(--muted)]">
           No account?{" "}
-          <Link href="/sign-up" className="font-medium text-[var(--accent)] hover:underline">
+          <Link href="/sign-up" className="hover-link font-medium text-[var(--accent)] underline-offset-2">
             Sign up
           </Link>
         </p>

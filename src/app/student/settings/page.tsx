@@ -343,7 +343,7 @@ function StudentSettingsInner() {
 
               <Link
                 href="/student/social?tab=customize"
-                className="text-sm font-medium text-[var(--accent)] underline-offset-2 hover:underline"
+                className="hover-link text-sm font-medium text-[var(--accent)] underline-offset-2"
               >
                 Open full Cheer customize tab
               </Link>

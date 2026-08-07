@@ -341,7 +341,7 @@ function FamilyDashboardInner() {
                 No students yet —{" "}
                 <button
                   type="button"
-                  className="font-medium text-[var(--accent)] underline-offset-2 hover:underline"
+                  className="hover-link font-medium text-[var(--accent)] underline-offset-2"
                   onClick={openAddStudentModal}
                 >
                   add one

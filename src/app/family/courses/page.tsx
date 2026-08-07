@@ -245,7 +245,7 @@ function FamilyCoursesInner() {
                 <li key={c._id} className="list-row list-row-dense">
                   <button
                     type="button"
-                    className={`min-w-0 text-left text-sm ${selectedCourse === c._id ? "font-semibold text-[var(--accent)]" : "text-[var(--foreground)]"}`}
+                    className={`hover-fade min-w-0 text-left text-sm ${selectedCourse === c._id ? "font-semibold text-[var(--accent)]" : "text-[var(--foreground)] hover:text-[var(--accent)]"}`}
                     onClick={() => {
                       setSelectedCourse(c._id);
                       setTab("structure");

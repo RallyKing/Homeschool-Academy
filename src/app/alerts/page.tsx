@@ -169,7 +169,7 @@ export default function AlertsPage() {
   if (user === null) {
     return (
       <p className="text-sm text-[var(--muted)]">
-        <Link href="/sign-in" className="font-medium text-[var(--accent)] hover:underline">
+        <Link href="/sign-in" className="hover-link font-medium text-[var(--accent)] underline-offset-2">
           Sign in
         </Link>{" "}
         to view alerts.
@@ -236,7 +236,7 @@ export default function AlertsPage() {
                     <button
                       type="button"
                       onClick={() => void onOpen(alert._id, alert.href)}
-                      className="mt-1 text-left text-sm font-semibold tracking-tight text-[var(--foreground)] hover:text-[var(--accent)]"
+                      className="hover-fade mt-1 text-left text-sm font-semibold tracking-tight text-[var(--foreground)] hover:text-[var(--accent)]"
                     >
                       {alert.title}
                     </button>

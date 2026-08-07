@@ -33,7 +33,7 @@ export function ViewAsBanner() {
           <span>You don&apos;t have permission to view as this student.</span>
           <Link
             href="/family/dashboard"
-            className="font-medium underline-offset-2 hover:underline"
+            className="hover-link font-medium underline-offset-2"
           >
             Back to family
           </Link>
@@ -64,13 +64,13 @@ export function ViewAsBanner() {
         <span className="flex flex-wrap items-center gap-2">
           <Link
             href={`/family/students/${context.student._id}`}
-            className="rounded-[var(--radius-sm)] border border-[var(--warning)]/40 bg-[var(--surface)] px-3 py-1 text-sm font-medium transition-colors hover:bg-[var(--surface-2)]"
+            className="hover-fade rounded-[var(--radius-sm)] border border-[var(--warning)]/40 bg-[var(--surface)] px-3 py-1 text-sm font-medium hover:bg-[var(--surface-2)]"
           >
             Manage
           </Link>
           <Link
             href="/family/dashboard"
-            className="rounded-[var(--radius-sm)] border border-[var(--warning)]/40 bg-[var(--surface)] px-3 py-1 text-sm font-medium transition-colors hover:bg-[var(--surface-2)]"
+            className="hover-fade rounded-[var(--radius-sm)] border border-[var(--warning)]/40 bg-[var(--surface)] px-3 py-1 text-sm font-medium hover:bg-[var(--surface-2)]"
           >
             Exit
           </Link>

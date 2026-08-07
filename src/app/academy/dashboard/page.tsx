@@ -237,7 +237,7 @@ function AcademyDashboardInner() {
             No academies yet.{" "}
             <button
               type="button"
-              className="text-[var(--accent)] underline"
+              className="hover-link text-[var(--accent)] underline-offset-2"
               onClick={openCreateAcademy}
             >
               Create your first academy

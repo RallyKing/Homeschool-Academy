@@ -81,7 +81,7 @@ export function InstallAppButton() {
   if (showIosTip) {
     return (
       <details className="text-sm text-[var(--muted)]">
-        <summary className="cursor-pointer list-none rounded-[var(--radius-sm)] px-2.5 py-1.5 font-medium transition-colors hover:bg-[var(--accent-soft)] hover:text-[var(--accent)]">
+        <summary className="hover-fade cursor-pointer list-none rounded-[var(--radius-sm)] px-2.5 py-1.5 font-medium hover:bg-[var(--accent-soft)] hover:text-[var(--accent)]">
           Install app
         </summary>
         <p className="mt-1 max-w-48 px-2 text-xs text-[var(--muted-fg)]">

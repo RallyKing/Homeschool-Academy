@@ -70,7 +70,7 @@ export default function HelpPage() {
           No published knowledge base articles yet. Check{" "}
           <Link
             href="/updates"
-            className="font-medium text-[var(--accent)] underline-offset-2 hover:underline"
+            className="hover-link font-medium text-[var(--accent)] underline-offset-2"
           >
             What&apos;s new
           </Link>{" "}
@@ -86,7 +86,7 @@ export default function HelpPage() {
                 <li key={a._id}>
                   <Link
                     href={`/help/${a.slug}`}
-                    className="flex items-center justify-between gap-3 py-3 text-sm font-medium text-[var(--foreground)] transition-colors hover:text-[var(--accent)]"
+                    className="hover-fade flex items-center justify-between gap-3 py-3 text-sm font-medium text-[var(--foreground)] hover:text-[var(--accent)]"
                   >
                     {a.title}
                     <span className="text-[var(--muted)]" aria-hidden>

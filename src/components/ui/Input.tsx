@@ -10,7 +10,7 @@ import {
 import { cn } from "@/lib/cn";
 
 const fieldClass =
-  "mt-1.5 w-full rounded-[var(--radius-md)] border border-[var(--border-strong)] bg-[var(--surface)] px-3.5 py-2.5 text-sm text-[var(--foreground)] shadow-sm transition-all duration-200 placeholder:text-[var(--muted-fg)] hover:border-[var(--border-strong)] focus:border-[var(--accent)] focus:outline-none focus:ring-4 focus:ring-[var(--accent-soft)] disabled:opacity-50";
+  "mt-1.5 w-full rounded-[var(--radius-md)] border border-[var(--border-strong)] bg-[var(--surface)] px-3.5 py-2.5 text-sm text-[var(--foreground)] shadow-sm transition-[border-color,box-shadow,background-color] duration-[180ms] ease-out placeholder:text-[var(--muted-fg)] hover:border-[rgba(14,116,144,0.4)] hover:bg-[var(--surface-2)] focus:border-[var(--accent)] focus:bg-[var(--surface)] focus:outline-none focus:ring-4 focus:ring-[var(--accent-soft)] disabled:opacity-50";
 
 export type InputProps = InputHTMLAttributes<HTMLInputElement> & {
   label?: string;

@@ -55,8 +55,7 @@ export function Breadcrumbs({
                 <Link
                   href={item.href!}
                   className={cn(
-                    "rounded-md px-1.5 py-1 font-medium text-[var(--muted)]",
-                    "transition-colors duration-200",
+                    "hover-fade rounded-md px-1.5 py-1 font-medium text-[var(--muted)]",
                     "hover:bg-[var(--accent-soft)] hover:text-[var(--accent)]",
                   )}
                 >

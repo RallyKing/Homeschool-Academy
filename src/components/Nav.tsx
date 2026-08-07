@@ -154,7 +154,7 @@ function BrandLink() {
   return (
     <Link
       href="/"
-      className="shrink-0 font-display text-[15px] font-semibold tracking-tight text-[var(--foreground)] transition-opacity hover:opacity-70"
+      className="hover-fade shrink-0 font-display text-[15px] font-semibold tracking-tight text-[var(--foreground)] hover:opacity-70"
     >
       Homeschool Academy
     </Link>
@@ -174,8 +174,7 @@ function NavLink({
     <Link
       href={href}
       className={cn(
-        "rounded-[var(--radius-sm)] px-2.5 py-1.5 text-sm font-medium",
-        "transition-colors duration-200",
+        "hover-fade rounded-[var(--radius-sm)] px-2.5 py-1.5 text-sm font-medium",
         active
           ? "bg-[var(--accent-soft)] text-[var(--accent)]"
           : "text-[var(--muted)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)]",
@@ -227,8 +226,7 @@ function NavDropdown({
         aria-controls={menuId}
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          "inline-flex items-center gap-1 rounded-[var(--radius-sm)] px-2.5 py-1.5 text-sm font-medium",
-          "transition-colors duration-200",
+          "hover-fade inline-flex items-center gap-1 rounded-[var(--radius-sm)] px-2.5 py-1.5 text-sm font-medium",
           active || open
             ? "bg-[var(--accent-soft)] text-[var(--accent)]"
             : "text-[var(--muted)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)]",
@@ -256,7 +254,7 @@ function NavDropdown({
                 href={href}
                 onClick={() => setOpen(false)}
                 className={cn(
-                  "block px-3.5 py-2.5 text-sm transition-colors",
+                  "hover-fade block px-3.5 py-2.5 text-sm",
                   itemActive
                     ? "bg-[var(--accent-soft)] font-medium text-[var(--accent)]"
                     : "text-[var(--foreground)] hover:bg-[var(--surface-2)]",
@@ -300,7 +298,7 @@ function NavInner() {
           <NavLink href="/sign-in">Sign in</NavLink>
           <Link
             href="/sign-up"
-            className="ml-1 rounded-[var(--radius-md)] bg-[var(--accent)] px-3.5 py-2 text-sm font-medium text-white shadow-sm transition-all duration-200 hover:bg-[var(--accent-hover)] active:scale-[0.98]"
+            className="hover-lift ml-1 rounded-[var(--radius-md)] bg-[var(--accent)] px-3.5 py-2 text-sm font-medium text-white shadow-sm hover:bg-[var(--accent-hover)] hover:brightness-[1.03]"
           >
             Sign up
           </Link>
@@ -355,7 +353,7 @@ function NavInner() {
         <button
           type="button"
           onClick={() => void signOut()}
-          className="rounded-[var(--radius-sm)] px-2.5 py-1.5 text-sm font-medium text-[var(--muted)] transition-colors duration-200 hover:bg-[var(--danger-soft)] hover:text-[var(--danger)]"
+          className="hover-fade rounded-[var(--radius-sm)] px-2.5 py-1.5 text-sm font-medium text-[var(--muted)] hover:bg-[var(--danger-soft)] hover:text-[var(--danger)]"
         >
           Sign out
         </button>

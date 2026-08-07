@@ -117,7 +117,7 @@ export default function ResetPasswordPage() {
         </form>
         <p className="mt-5 text-sm text-[var(--muted)]">
           Remembered it?{" "}
-          <Link href="/sign-in" className="font-medium text-[var(--accent)] hover:underline">
+          <Link href="/sign-in" className="hover-link font-medium text-[var(--accent)] underline-offset-2">
             Sign in
           </Link>
         </p>

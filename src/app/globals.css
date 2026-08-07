@@ -26,9 +26,15 @@
   --shadow-sm: 0 1px 2px rgba(12, 18, 34, 0.04);
   --shadow-md: 0 4px 16px rgba(12, 18, 34, 0.06), 0 1px 3px rgba(12, 18, 34, 0.04);
   --shadow-lg: 0 12px 40px rgba(12, 18, 34, 0.1), 0 2px 8px rgba(12, 18, 34, 0.04);
+  --shadow-hover: 0 6px 20px rgba(12, 18, 34, 0.1), 0 2px 6px rgba(12, 18, 34, 0.05);
   --shadow-nav: 0 1px 0 rgba(12, 18, 34, 0.06);
   --glass: rgba(255, 255, 255, 0.72);
   --overlay: rgba(12, 18, 34, 0.4);
+  /* Hover / interactive motion */
+  --duration-hover: 180ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --hover-lift: translateY(-1px);
+  --hover-scale: scale(1.02);
 }
 
 @theme inline {
@@ -61,6 +67,82 @@ body {
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* ── Shared hover / interactive utilities ── */
+.interactive {
+  transition:
+    color var(--duration-hover) var(--ease-out),
+    background-color var(--duration-hover) var(--ease-out),
+    border-color var(--duration-hover) var(--ease-out),
+    box-shadow var(--duration-hover) var(--ease-out),
+    opacity var(--duration-hover) var(--ease-out),
+    transform var(--duration-hover) var(--ease-out),
+    filter var(--duration-hover) var(--ease-out);
+}
+
+.hover-lift {
+  transition:
+    color var(--duration-hover) var(--ease-out),
+    background-color var(--duration-hover) var(--ease-out),
+    border-color var(--duration-hover) var(--ease-out),
+    box-shadow var(--duration-hover) var(--ease-out),
+    opacity var(--duration-hover) var(--ease-out),
+    transform var(--duration-hover) var(--ease-out),
+    filter var(--duration-hover) var(--ease-out);
+}
+
+.hover-lift:hover:not(:disabled):not([aria-disabled="true"]) {
+  transform: var(--hover-lift);
+  box-shadow: var(--shadow-hover);
+}
+
+.hover-lift:active:not(:disabled):not([aria-disabled="true"]) {
+  transform: scale(0.98);
+}
+
+.hover-fade {
+  transition:
+    color var(--duration-hover) var(--ease-out),
+    background-color var(--duration-hover) var(--ease-out),
+    border-color var(--duration-hover) var(--ease-out),
+    opacity var(--duration-hover) var(--ease-out);
+}
+
+.hover-link {
+  transition:
+    color var(--duration-hover) var(--ease-out),
+    background-color var(--duration-hover) var(--ease-out),
+    text-decoration-color var(--duration-hover) var(--ease-out),
+    opacity var(--duration-hover) var(--ease-out);
+  text-underline-offset: 0.18em;
+  text-decoration-color: transparent;
+}
+
+.hover-link:hover {
+  text-decoration-line: underline;
+  text-decoration-color: currentColor;
+}
+
+/* Icon / compact control hover */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  transition:
+    color var(--duration-hover) var(--ease-out),
+    background-color var(--duration-hover) var(--ease-out),
+    transform var(--duration-hover) var(--ease-out);
+}
+
+.icon-btn:hover:not(:disabled) {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.icon-btn:active:not(:disabled) {
+  transform: scale(0.96);
 }
 
 /* Page section entrance */
@@ -146,14 +228,16 @@ body {
   border: 1px solid var(--border);
   box-shadow: var(--shadow-sm);
   transition:
-    box-shadow 0.2s ease,
-    border-color 0.2s ease,
-    transform 0.2s ease;
+    box-shadow var(--duration-hover) var(--ease-out),
+    border-color var(--duration-hover) var(--ease-out),
+    transform var(--duration-hover) var(--ease-out),
+    background-color var(--duration-hover) var(--ease-out);
 }
 
 .list-row:hover {
   border-color: var(--border-strong);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-hover);
+  transform: var(--hover-lift);
 }
 
 /* Compact density for inbox-style lists */
@@ -229,6 +313,17 @@ html {
   font-size: 0.8125rem;
   font-weight: 500;
   box-shadow: var(--shadow-sm);
+  transition:
+    background-color var(--duration-hover) var(--ease-out),
+    border-color var(--duration-hover) var(--ease-out),
+    box-shadow var(--duration-hover) var(--ease-out),
+    opacity var(--duration-hover) var(--ease-out);
+}
+
+.badge-chip:is(button, a, [role="button"]):hover:not(:disabled) {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+  box-shadow: var(--shadow-md);
 }
 
 .badge-icon {
@@ -394,7 +489,12 @@ html {
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: var(--surface);
-  transition: background 0.2s, border-color 0.2s, transform 0.15s;
+  transition:
+    background-color var(--duration-hover) var(--ease-out),
+    border-color var(--duration-hover) var(--ease-out),
+    box-shadow var(--duration-hover) var(--ease-out),
+    transform var(--duration-hover) var(--ease-out),
+    color var(--duration-hover) var(--ease-out);
 }
 
 .cheer-kind-chip {
@@ -410,6 +510,8 @@ html {
 .cheer-sticker-btn:hover:not(:disabled),
 .cheer-option:hover:not(:disabled) {
   background: var(--surface-2);
+  border-color: var(--border-strong);
+  transform: var(--hover-lift);
 }
 
 .cheer-kind-chip-active {
@@ -507,6 +609,16 @@ html {
     transparent 72%
   );
   padding: 0.85rem 1rem;
+  transition:
+    border-color var(--duration-hover) var(--ease-out),
+    box-shadow var(--duration-hover) var(--ease-out),
+    transform var(--duration-hover) var(--ease-out);
+}
+
+.family-wall-item:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-hover);
+  transform: var(--hover-lift);
 }
 
 .family-wall-avatar-fallback {
@@ -518,5 +630,40 @@ html {
   background: var(--accent-soft);
   color: var(--accent);
   font-size: 0.85rem;
+}
+
+/* Respect reduced motion — keep color fades, drop transforms */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .animate-fade-up,
+  .animate-modal-in,
+  .animate-overlay-in,
+  .level-up-pulse,
+  .cheer-celebrate .cheer-banner,
+  .cheer-bubble {
+    animation: none !important;
+  }
+
+  .hover-lift:hover:not(:disabled):not([aria-disabled="true"]),
+  .hover-lift:active:not(:disabled):not([aria-disabled="true"]),
+  .list-row:hover,
+  .family-wall-item:hover,
+  .cheer-kind-chip:hover,
+  .cheer-preset:hover,
+  .cheer-sticker-btn:hover:not(:disabled),
+  .cheer-option:hover:not(:disabled),
+  .cheer-sticker-btn-active,
+  .icon-btn:active:not(:disabled),
+  .interactive:active {
+    transform: none !important;
+  }
+
+  .xp-bar-fill,
+  .cheer-progress-fill {
+    transition: none !important;
+  }
 }
 

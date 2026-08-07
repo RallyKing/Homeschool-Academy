@@ -43,12 +43,12 @@ export function Tabs<T extends string>({
             tabIndex={selected ? 0 : -1}
             onClick={() => onChange(tab.id)}
             className={cn(
-              "shrink-0 whitespace-nowrap rounded-[var(--radius-sm)] font-medium transition-all duration-200",
+              "interactive shrink-0 whitespace-nowrap rounded-[var(--radius-sm)] font-medium",
               "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]",
               size === "sm" ? "px-3 py-2 text-sm" : "px-3.5 py-2.5 text-sm",
               selected
                 ? "bg-[var(--accent)] text-white shadow-sm"
-                : "bg-[var(--surface)] text-[var(--muted)] border border-[var(--border)] hover:border-[var(--border-strong)] hover:text-[var(--foreground)]",
+                : "bg-[var(--surface)] text-[var(--muted)] border border-[var(--border)] hover:border-[var(--border-strong)] hover:bg-[var(--surface-2)] hover:text-[var(--foreground)]",
             )}
           >
             {tab.label}

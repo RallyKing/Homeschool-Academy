@@ -59,7 +59,7 @@ export function Card({
         "rounded-[var(--radius-xl)] border border-[var(--border)] bg-[var(--surface)] shadow-[var(--shadow-sm)]",
         pads[padding],
         interactive &&
-          "transition-all duration-200 hover:border-[var(--border-strong)] hover:shadow-[var(--shadow-md)]",
+          "hover-lift hover:border-[var(--border-strong)]",
         className,
       )}
     >
@@ -150,6 +150,7 @@ export function Badge({
     <span
       className={cn(
         "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium",
+        "transition-[background-color,border-color,opacity,color] duration-[var(--duration-hover)] ease-[var(--ease-out)]",
         tones[tone],
         className,
       )}
@@ -206,18 +207,21 @@ export function LinkButton({
   className?: string;
 }) {
   // Avoid importing next/link here for SSR flexibility — pages can wrap Link.
+  const lifts = variant === "primary" || variant === "secondary";
   const variants = {
     primary:
-      "bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] border-transparent",
+      "bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] hover:brightness-[1.03] border-transparent",
     secondary:
       "bg-[var(--surface)] text-[var(--foreground)] border-[var(--border-strong)] hover:bg-[var(--surface-2)]",
-    ghost: "bg-transparent text-[var(--muted)] border-transparent hover:bg-[var(--accent-soft)] hover:text-[var(--accent)]",
+    ghost:
+      "bg-transparent text-[var(--muted)] border-transparent hover:bg-[var(--accent-soft)] hover:text-[var(--accent)] shadow-none hover:shadow-none",
   };
   return (
     <a
       href={href}
       className={cn(
-        "inline-flex items-center justify-center rounded-[var(--radius-md)] border px-4 py-2.5 text-sm font-medium shadow-sm transition-all duration-200 active:scale-[0.98]",
+        "interactive inline-flex items-center justify-center rounded-[var(--radius-md)] border px-4 py-2.5 text-sm font-medium shadow-sm",
+        lifts ? "hover-lift" : "hover-fade active:scale-[0.98]",
         variants[variant],
         className,
       )}

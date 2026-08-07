@@ -76,21 +76,21 @@ export function WhatsNewBanner() {
           {label}.{" "}
           <Link
             href="/updates"
-            className="font-semibold underline-offset-2 hover:underline"
+            className="hover-link font-semibold underline-offset-2"
           >
             What&apos;s new
           </Link>
           {" · "}
           <Link
             href="/help"
-            className="font-semibold underline-offset-2 hover:underline"
+            className="hover-link font-semibold underline-offset-2"
           >
             Knowledge base
           </Link>
         </p>
         <button
           type="button"
-          className="rounded-[var(--radius-sm)] px-2 py-1 font-medium transition-colors hover:bg-[var(--surface)]"
+          className="hover-fade rounded-[var(--radius-sm)] px-2 py-1 font-medium hover:bg-[var(--surface)]"
           onClick={() => setDismissed(true)}
         >
           Dismiss

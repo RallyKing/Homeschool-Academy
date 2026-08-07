@@ -956,7 +956,7 @@ function FamilySettingsInner() {
           Need redemptions?{" "}
           <Link
             href="/family/chores?tab=rewards"
-            className="font-medium text-[var(--accent)] underline-offset-2 hover:underline"
+            className="hover-link font-medium text-[var(--accent)] underline-offset-2"
           >
             Open chores & rewards
           </Link>

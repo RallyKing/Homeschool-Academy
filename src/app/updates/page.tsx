@@ -115,7 +115,7 @@ export default function UpdatesPage() {
               Published product updates will appear here. Browse the{" "}
               <Link
                 href="/help"
-                className="font-medium text-[var(--accent)] underline-offset-2 hover:underline"
+                className="hover-link font-medium text-[var(--accent)] underline-offset-2"
               >
                 knowledge base
               </Link>{" "}

@@ -6,7 +6,7 @@ type ButtonSize = "sm" | "md" | "lg";
 
 const variants: Record<ButtonVariant, string> = {
   primary:
-    "bg-[var(--accent)] text-white shadow-sm hover:bg-[var(--accent-hover)] border border-transparent",
+    "bg-[var(--accent)] text-white shadow-sm hover:bg-[var(--accent-hover)] hover:brightness-[1.03] border border-transparent",
   secondary:
     "bg-[var(--surface)] text-[var(--foreground)] border border-[var(--border-strong)] shadow-sm hover:bg-[var(--surface-2)]",
   ghost:
@@ -33,13 +33,15 @@ export function Button({
   type = "button",
   ...props
 }: ButtonProps) {
+  const lifts = variant === "primary" || variant === "secondary";
   return (
     <button
       type={type}
       className={cn(
-        "inline-flex items-center justify-center gap-2 font-medium transition-all duration-200",
+        "interactive inline-flex items-center justify-center gap-2 font-medium",
+        lifts ? "hover-lift" : "hover-fade",
         "disabled:pointer-events-none disabled:opacity-45",
-        "active:scale-[0.98]",
+        !lifts && "active:scale-[0.98]",
         variants[variant],
         sizes[size],
         className,

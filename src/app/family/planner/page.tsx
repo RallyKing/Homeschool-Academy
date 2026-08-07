@@ -207,7 +207,7 @@ export default function FamilyPlannerPage() {
                   <li key={s._id} className="list-row">
                     <button
                       type="button"
-                      className={`text-sm ${scheduleId === s._id ? "font-semibold text-[var(--accent)]" : "text-[var(--foreground)]"}`}
+                      className={`hover-fade text-sm ${scheduleId === s._id ? "font-semibold text-[var(--accent)]" : "text-[var(--foreground)] hover:text-[var(--accent)]"}`}
                       onClick={() => setActiveSchedule(s._id)}
                     >
                       {s.weekStart} → {s.weekEnd}
