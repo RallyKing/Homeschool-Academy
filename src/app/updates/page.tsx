@@ -10,7 +10,6 @@ import {
   Card,
   PageHeader,
   Badge,
-  EmptyState,
 } from "@/components/ui";
 
 const LAST_SEEN_KEY = "homeschool-lastSeenUpdatesAt";
