@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
 import { alertFamily, alertStudent } from "./lib/alerts";
 import { getCurrentUser, requireStudentFamilyAccess } from "./lib/auth";
@@ -8,6 +8,17 @@ import {
   awardProgress,
   rewardsForLog,
 } from "./lib/gamificationCore";
+
+/** Legacy docs without status are treated as active. */
+function isLogActive(log: Doc<"logs">): boolean {
+  return log.status !== "nullified";
+}
+
+function requireParentOrAdmin(user: Doc<"users">) {
+  if (user.role !== "parent" && user.role !== "superAdmin") {
+    throw new Error("Only parents can perform this action");
+  }
+}
 
 export const generateUploadUrl = mutation({
   args: {},
@@ -70,6 +81,7 @@ export const create = mutation({
       verifiedByParent: false,
       createdBy: user._id,
       createdAt: Date.now(),
+      status: "active",
     });
 
     await alertFamily(ctx, {
@@ -95,7 +107,7 @@ export const create = mutation({
         .collect();
       const otherSubjects = new Set(
         priorWithSubject
-          .filter((l) => l._id !== logId && l.subjectId)
+          .filter((l) => l._id !== logId && l.subjectId && isLogActive(l))
           .map((l) => l.subjectId as string),
       );
       newSubject = !otherSubjects.has(resolvedSubjectId);
@@ -203,6 +215,7 @@ export const update = mutation({
     entryType: v.optional(entryTypeValidator),
     durationMinutes: v.optional(v.number()),
     notes: v.optional(v.string()),
+    storageId: v.optional(v.id("_storage")),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -220,13 +233,19 @@ export const update = mutation({
       throw new Error("Unauthorized to edit this log");
     }
 
+    if (!isLogActive(log)) {
+      throw new Error("Cannot edit a nullified log — restore it first");
+    }
+
     const patch: {
       courseId?: typeof args.courseId;
       subjectId?: typeof args.subjectId;
       entryType?: typeof args.entryType;
       durationMinutes?: number;
       notes?: string;
-    } = {};
+      storageId?: Id<"_storage">;
+      updatedAt: number;
+    } = { updatedAt: Date.now() };
 
     if (args.durationMinutes !== undefined) {
       if (args.durationMinutes <= 0) {
@@ -239,6 +258,9 @@ export const update = mutation({
     }
     if (args.notes !== undefined) {
       patch.notes = args.notes.trim() || undefined;
+    }
+    if (args.storageId !== undefined) {
+      patch.storageId = args.storageId;
     }
     if (args.courseId !== undefined) {
       if (args.courseId) {
@@ -283,6 +305,68 @@ export const remove = mutation({
   },
 });
 
+/**
+ * Soft-void a log for audit trail. Does NOT reverse XP/points already awarded
+ * on create — progress charts and summaries simply exclude nullified entries.
+ */
+export const nullify = mutation({
+  args: {
+    logId: v.id("logs"),
+    reason: v.optional(v.string()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const log = await ctx.db.get("logs", args.logId);
+    if (!log) {
+      throw new Error("Log not found");
+    }
+
+    const { user } = await requireStudentFamilyAccess(ctx, log.studentId);
+    requireParentOrAdmin(user);
+
+    if (!isLogActive(log)) {
+      throw new Error("Log is already nullified");
+    }
+
+    const reason = args.reason?.trim();
+    await ctx.db.patch("logs", args.logId, {
+      status: "nullified",
+      nullifiedAt: Date.now(),
+      nullifiedBy: user._id,
+      nullifyReason: reason || undefined,
+      updatedAt: Date.now(),
+    });
+    return null;
+  },
+});
+
+export const restore = mutation({
+  args: { logId: v.id("logs") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const log = await ctx.db.get("logs", args.logId);
+    if (!log) {
+      throw new Error("Log not found");
+    }
+
+    const { user } = await requireStudentFamilyAccess(ctx, log.studentId);
+    requireParentOrAdmin(user);
+
+    if (isLogActive(log)) {
+      throw new Error("Log is not nullified");
+    }
+
+    await ctx.db.patch("logs", args.logId, {
+      status: "active",
+      nullifiedAt: undefined,
+      nullifiedBy: undefined,
+      nullifyReason: undefined,
+      updatedAt: Date.now(),
+    });
+    return null;
+  },
+});
+
 export const getFileUrl = query({
   args: { storageId: v.id("_storage") },
   returns: v.union(v.string(), v.null()),
@@ -323,9 +407,10 @@ export const progressSummary = query({
       .order("desc")
       .take(200);
 
-    const filtered = args.since
+    const filtered = (args.since
       ? logs.filter((l) => l.createdAt >= args.since!)
-      : logs;
+      : logs
+    ).filter(isLogActive);
 
     let totalMinutes = 0;
     let verifiedMinutes = 0;
@@ -437,15 +522,17 @@ export const progressChartData = query({
     const since = Math.min(args.since, until);
     const end = Math.max(args.since, until);
 
-    const logs = await ctx.db
-      .query("logs")
-      .withIndex("by_student_and_createdAt", (q) =>
-        q
-          .eq("studentId", args.studentId)
-          .gte("createdAt", since)
-          .lte("createdAt", end),
-      )
-      .take(500);
+    const logs = (
+      await ctx.db
+        .query("logs")
+        .withIndex("by_student_and_createdAt", (q) =>
+          q
+            .eq("studentId", args.studentId)
+            .gte("createdAt", since)
+            .lte("createdAt", end),
+        )
+        .take(500)
+    ).filter(isLogActive);
 
     const dateKeys = eachDateKey(since, end);
     const dayMap = new Map<

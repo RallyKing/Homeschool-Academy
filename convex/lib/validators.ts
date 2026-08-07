@@ -52,6 +52,11 @@ export const studentDocValidator = v.object({
   createdAt: v.number(),
 });
 
+export const logStatusValidator = v.union(
+  v.literal("active"),
+  v.literal("nullified"),
+);
+
 export const logDocValidator = v.object({
   _id: v.id("logs"),
   _creationTime: v.number(),
@@ -66,6 +71,11 @@ export const logDocValidator = v.object({
   verifiedBy: v.optional(v.id("users")),
   createdBy: v.id("users"),
   createdAt: v.number(),
+  status: v.optional(logStatusValidator),
+  nullifiedAt: v.optional(v.number()),
+  nullifiedBy: v.optional(v.id("users")),
+  nullifyReason: v.optional(v.string()),
+  updatedAt: v.optional(v.number()),
 });
 
 export const scheduleDocValidator = v.object({

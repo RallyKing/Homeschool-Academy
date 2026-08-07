@@ -216,12 +216,21 @@ export default defineSchema({
     verifiedBy: v.optional(v.id("users")),
     createdBy: v.id("users"),
     createdAt: v.number(),
+    /** Missing status is treated as active (legacy docs). */
+    status: v.optional(
+      v.union(v.literal("active"), v.literal("nullified")),
+    ),
+    nullifiedAt: v.optional(v.number()),
+    nullifiedBy: v.optional(v.id("users")),
+    nullifyReason: v.optional(v.string()),
+    updatedAt: v.optional(v.number()),
   })
     .index("by_student", ["studentId"])
     .index("by_student_and_createdAt", ["studentId", "createdAt"])
     .index("by_course", ["courseId"])
     .index("by_subject", ["subjectId"])
-    .index("by_createdBy", ["createdBy"]),
+    .index("by_createdBy", ["createdBy"])
+    .index("by_student_and_status", ["studentId", "status"]),
 
   alerts: defineTable({
     recipientType: v.union(

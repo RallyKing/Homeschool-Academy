@@ -148,15 +148,19 @@ export function LogEntryForm() {
           <ul className="space-y-2">
             {logs.map((log) => (
               <li key={log._id} className="list-row text-sm">
-                <span className="text-[var(--foreground)]">
+                <span
+                  className={`text-[var(--foreground)] ${log.status === "nullified" ? "opacity-70 line-through" : ""}`}
+                >
                   <span className="font-medium">{log.durationMinutes} min</span>
                   {" · "}
                   {log.entryType.replaceAll("_", " ")}
                   {log.notes ? ` — ${log.notes}` : ""}
                 </span>
-                {log.verifiedByParent && (
+                {log.status === "nullified" ? (
+                  <Badge tone="warning">nullified</Badge>
+                ) : log.verifiedByParent ? (
                   <Badge tone="success">verified</Badge>
-                )}
+                ) : null}
               </li>
             ))}
           </ul>
