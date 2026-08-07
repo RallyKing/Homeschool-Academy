@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import {
+  deleteStudentData,
   getCurrentUser,
   getPrimaryFamilyForUser,
   requireFamilyAccess,
@@ -112,6 +113,22 @@ export const update = mutation({
     }
 
     await ctx.db.patch("students", student._id, patch);
+    return null;
+  },
+});
+
+export const remove = mutation({
+  args: { studentId: v.id("students") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { user, student } = await requireStudentFamilyAccess(
+      ctx,
+      args.studentId,
+    );
+    if (user.role !== "parent" && user.role !== "superAdmin") {
+      throw new Error("Only parents can delete students");
+    }
+    await deleteStudentData(ctx, student._id);
     return null;
   },
 });
@@ -239,5 +256,46 @@ export const myProfile = query({
       .query("students")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .first();
+  },
+});
+
+/** Parent view-as: returns student profile only if caller is a parent of that family. */
+export const getViewAsContext = query({
+  args: { studentId: v.id("students") },
+  returns: v.union(
+    v.object({
+      student: studentDocValidator,
+      viewingAs: v.literal(true),
+    }),
+    v.null(),
+  ),
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
+    const student = await ctx.db.get("students", args.studentId);
+    if (!student) {
+      return null;
+    }
+
+    if (user.role === "superAdmin") {
+      return { student, viewingAs: true as const };
+    }
+
+    const role = user.role ?? "parent";
+    if (role !== "parent") {
+      return null;
+    }
+
+    const membership = await ctx.db
+      .query("familyMembers")
+      .withIndex("by_family_and_user", (q) =>
+        q.eq("familyId", student.familyId).eq("userId", user._id),
+      )
+      .unique();
+
+    if (!membership) {
+      return null;
+    }
+
+    return { student, viewingAs: true as const };
   },
 });

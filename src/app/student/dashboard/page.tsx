@@ -1,9 +1,11 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, Suspense, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
+import { StudentProgressCharts } from "@/components/StudentProgressCharts";
+import { useViewAsStudentId } from "@/hooks/useViewAsStudentId";
 
 function isoDate(d: Date) {
   return d.toISOString().slice(0, 10);
@@ -16,16 +18,30 @@ function weekRange() {
   start.setDate(now.getDate() - day);
   const end = new Date(start);
   end.setDate(start.getDate() + 6);
-  return { weekStart: isoDate(start), weekEnd: isoDate(end), today: isoDate(now), dayOfWeek: day };
+  return {
+    weekStart: isoDate(start),
+    weekEnd: isoDate(end),
+    today: isoDate(now),
+    dayOfWeek: day,
+  };
 }
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 type EntryType = "native_completion" | "external_time" | "manual";
 
-export default function StudentDashboardPage() {
+function StudentDashboardInner() {
   const user = useQuery(api.users.current);
-  const profile = useQuery(api.students.myProfile);
+  const viewAsStudentId = useViewAsStudentId();
+  const myProfile = useQuery(
+    api.students.myProfile,
+    viewAsStudentId ? "skip" : {},
+  );
+  const viewAsContext = useQuery(
+    api.students.getViewAsContext,
+    viewAsStudentId ? { studentId: viewAsStudentId } : "skip",
+  );
+
   const claimByName = useMutation(api.students.claimByName);
   const createLog = useMutation(api.logs.create);
   const requestRevision = useMutation(api.schedules.requestRevision);
@@ -40,6 +56,15 @@ export default function StudentDashboardPage() {
   const [courseId, setCourseId] = useState("");
 
   const week = useMemo(() => weekRange(), []);
+
+  const viewingAs = Boolean(viewAsStudentId);
+  const profileLoading = viewingAs
+    ? viewAsContext === undefined
+    : myProfile === undefined;
+  const profile = viewingAs
+    ? (viewAsContext?.student ?? null)
+    : (myProfile ?? null);
+  const viewAsDenied = viewingAs && viewAsContext === null;
 
   const approved = useQuery(
     api.schedules.getApprovedForWeek,
@@ -56,12 +81,6 @@ export default function StudentDashboardPage() {
   const courses = useQuery(
     api.courses.listAvailableForMyFamily,
     profile ? {} : "skip",
-  );
-
-  const [since] = useState(() => Date.now() - 14 * 24 * 60 * 60 * 1000);
-  const progress = useQuery(
-    api.logs.progressSummary,
-    profile ? { studentId: profile._id, since } : "skip",
   );
 
   const todayItems =
@@ -99,18 +118,34 @@ export default function StudentDashboardPage() {
         courseId: courseId ? (courseId as Id<"courses">) : undefined,
       });
       setNotes("");
-      setMessage("Log saved.");
+      setMessage(
+        viewingAs
+          ? "Log saved (recorded as you, for this student)."
+          : "Log saved.",
+      );
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Failed");
     }
   }
 
-  if (user === undefined || profile === undefined) {
+  if (user === undefined || profileLoading) {
     return <p className="text-sm text-neutral-500">Loading…</p>;
   }
 
   if (!user) {
     return <p className="text-sm">Please sign in.</p>;
+  }
+
+  if (viewAsDenied) {
+    return (
+      <div className="space-y-3">
+        <h1 className="text-2xl font-semibold">View as student</h1>
+        <p className="text-sm text-neutral-600">
+          You don&apos;t have permission to view this student, or the profile
+          was not found.
+        </p>
+      </div>
+    );
   }
 
   if (!profile) {
@@ -158,6 +193,7 @@ export default function StudentDashboardPage() {
         <h1 className="text-2xl font-semibold">{profile.displayName}</h1>
         <p className="text-sm text-neutral-600">
           {profile.academicLevel ?? "Student"} · week of {week.weekStart}
+          {viewingAs ? " · parent preview" : ""}
         </p>
       </div>
 
@@ -259,16 +295,12 @@ export default function StudentDashboardPage() {
         </form>
       </section>
 
-      <section className="space-y-2">
-        <h2 className="text-lg font-medium">Progress (14 days)</h2>
-        {progress === undefined ? (
-          <p className="text-sm text-neutral-500">Loading…</p>
-        ) : (
-          <p className="text-sm">
-            {progress.totalMinutes} minutes logged · {progress.entryCount}{" "}
-            entries · {progress.verifiedCount} verified
-          </p>
-        )}
+      <section className="space-y-4 border-t border-neutral-200 pt-8">
+        <StudentProgressCharts
+          studentId={profile._id}
+          defaultRangeDays={14}
+          title="Progress"
+        />
       </section>
 
       {schedules && schedules.length > 0 && (
@@ -286,5 +318,13 @@ export default function StudentDashboardPage() {
 
       {message && <p className="text-sm text-neutral-600">{message}</p>}
     </div>
+  );
+}
+
+export default function StudentDashboardPage() {
+  return (
+    <Suspense fallback={<p className="text-sm text-neutral-500">Loading…</p>}>
+      <StudentDashboardInner />
+    </Suspense>
   );
 }

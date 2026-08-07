@@ -1,9 +1,12 @@
 "use client";
 
+import { Suspense } from "react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useQuery } from "convex/react";
 import Link from "next/link";
 import { api } from "../../convex/_generated/api";
+import { useViewAsStudentId } from "@/hooks/useViewAsStudentId";
+import { withViewAs } from "@/lib/viewAs";
 
 const linksByRole: Record<string, Array<{ href: string; label: string }>> = {
   superAdmin: [
@@ -31,9 +34,19 @@ const linksByRole: Record<string, Array<{ href: string; label: string }>> = {
   ],
 };
 
-export function Nav() {
+const viewAsLinks = [
+  { href: "/student/dashboard", label: "Today" },
+  { href: "/family/dashboard", label: "Exit to family" },
+];
+
+function NavInner() {
   const user = useQuery(api.users.current);
   const { signOut } = useAuthActions();
+  const viewAsStudentId = useViewAsStudentId();
+  const viewAs = useQuery(
+    api.students.getViewAsContext,
+    viewAsStudentId ? { studentId: viewAsStudentId } : "skip",
+  );
 
   if (user === undefined) {
     return (
@@ -69,7 +82,10 @@ export function Nav() {
   }
 
   const role = user.role ?? "parent";
-  const links = linksByRole[role] ?? linksByRole.parent;
+  const impersonating = Boolean(viewAs?.viewingAs && viewAsStudentId);
+  const links = impersonating
+    ? viewAsLinks
+    : (linksByRole[role] ?? linksByRole.parent);
 
   return (
     <header className="border-b border-neutral-200 px-4 py-3">
@@ -81,7 +97,11 @@ export function Nav() {
           {links?.map((link) => (
             <Link
               key={link.href}
-              href={link.href}
+              href={
+                impersonating && link.href.startsWith("/student")
+                  ? withViewAs(link.href, viewAsStudentId)
+                  : link.href
+              }
               className="text-neutral-700 hover:underline"
             >
               {link.label}
@@ -99,5 +119,24 @@ export function Nav() {
         </nav>
       </div>
     </header>
+  );
+}
+
+export function Nav() {
+  return (
+    <Suspense
+      fallback={
+        <header className="border-b border-neutral-200 px-4 py-3">
+          <div className="mx-auto flex max-w-4xl items-center justify-between">
+            <span className="font-semibold text-neutral-900">
+              Homeschool Academy
+            </span>
+            <span className="text-sm text-neutral-500">Loading…</span>
+          </div>
+        </header>
+      }
+    >
+      <NavInner />
+    </Suspense>
   );
 }

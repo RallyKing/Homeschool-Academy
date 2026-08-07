@@ -1,6 +1,9 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { requireStudentFamilyAccess } from "./lib/auth";
+import {
+  deleteScheduleItems,
+  requireStudentFamilyAccess,
+} from "./lib/auth";
 import { scheduleDocValidator } from "./lib/validators";
 
 const scheduleItemDocValidator = v.object({
@@ -85,6 +88,60 @@ export const createDraft = mutation({
       createdBy: user._id,
       createdAt: Date.now(),
     });
+  },
+});
+
+export const update = mutation({
+  args: {
+    scheduleId: v.id("schedules"),
+    weekStart: v.optional(v.string()),
+    weekEnd: v.optional(v.string()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const schedule = await ctx.db.get("schedules", args.scheduleId);
+    if (!schedule) {
+      throw new Error("Schedule not found");
+    }
+    const { user } = await requireStudentFamilyAccess(ctx, schedule.studentId);
+    if (user.role === "student") {
+      throw new Error("Students cannot edit schedules");
+    }
+    if (schedule.status === "approved") {
+      throw new Error("Cannot edit an approved schedule — request revision first");
+    }
+
+    const patch: {
+      weekStart?: string;
+      weekEnd?: string;
+      updatedAt: number;
+    } = { updatedAt: Date.now() };
+    if (args.weekStart !== undefined) {
+      patch.weekStart = args.weekStart;
+    }
+    if (args.weekEnd !== undefined) {
+      patch.weekEnd = args.weekEnd;
+    }
+    await ctx.db.patch("schedules", args.scheduleId, patch);
+    return null;
+  },
+});
+
+export const remove = mutation({
+  args: { scheduleId: v.id("schedules") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const schedule = await ctx.db.get("schedules", args.scheduleId);
+    if (!schedule) {
+      throw new Error("Schedule not found");
+    }
+    const { user } = await requireStudentFamilyAccess(ctx, schedule.studentId);
+    if (user.role === "student") {
+      throw new Error("Students cannot delete schedules");
+    }
+    await deleteScheduleItems(ctx, schedule._id);
+    await ctx.db.delete("schedules", schedule._id);
+    return null;
   },
 });
 
@@ -227,6 +284,65 @@ export const removeItem = mutation({
     }
 
     await ctx.db.delete("scheduleItems", args.itemId);
+    return null;
+  },
+});
+
+export const updateItem = mutation({
+  args: {
+    itemId: v.id("scheduleItems"),
+    title: v.optional(v.string()),
+    plannedMinutes: v.optional(v.number()),
+    courseId: v.optional(v.id("courses")),
+    dayOfWeek: v.optional(v.number()),
+    date: v.optional(v.string()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const item = await ctx.db.get("scheduleItems", args.itemId);
+    if (!item) throw new Error("Item not found");
+
+    const schedule = await ctx.db.get("schedules", item.scheduleId);
+    if (!schedule) throw new Error("Schedule not found");
+
+    const { user } = await requireStudentFamilyAccess(ctx, schedule.studentId);
+    if (user.role === "student") {
+      throw new Error("Students cannot edit schedule items");
+    }
+    if (schedule.status === "approved") {
+      throw new Error("Cannot modify an approved schedule");
+    }
+
+    const patch: {
+      title?: string;
+      plannedMinutes?: number;
+      courseId?: typeof args.courseId;
+      dayOfWeek?: number;
+      date?: string;
+    } = {};
+
+    if (args.title !== undefined) {
+      const title = args.title.trim();
+      if (!title) throw new Error("Item title is required");
+      patch.title = title;
+    }
+    if (args.plannedMinutes !== undefined) {
+      if (args.plannedMinutes <= 0) {
+        throw new Error("Planned minutes must be greater than 0");
+      }
+      patch.plannedMinutes = args.plannedMinutes;
+    }
+    if (args.courseId !== undefined) {
+      patch.courseId = args.courseId;
+    }
+    if (args.dayOfWeek !== undefined) {
+      patch.dayOfWeek = args.dayOfWeek;
+    }
+    if (args.date !== undefined) {
+      patch.date = args.date;
+    }
+
+    await ctx.db.patch("scheduleItems", args.itemId, patch);
     return null;
   },
 });

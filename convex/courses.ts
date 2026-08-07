@@ -1,9 +1,12 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import {
+  deleteCourseCascade,
+  deleteLessonsForModule,
   getCurrentUser,
   getPrimaryFamilyForUser,
   requireAcademyAccess,
+  requireCourseWriteAccess,
   requireFamilyAccess,
   requireFamilyReadAccess,
   requireRole,
@@ -246,6 +249,62 @@ export const create = mutation({
   },
 });
 
+export const update = mutation({
+  args: {
+    courseId: v.id("courses"),
+    title: v.optional(v.string()),
+    description: v.optional(v.string()),
+    subjectId: v.optional(v.id("subjects")),
+    externalSourceName: v.optional(v.string()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requireRole(ctx, ["parent", "teacher", "superAdmin"]);
+    const { course } = await requireCourseWriteAccess(ctx, args.courseId);
+
+    const patch: {
+      title?: string;
+      description?: string;
+      subjectId?: typeof args.subjectId;
+      externalSourceName?: string;
+    } = {};
+
+    if (args.title !== undefined) {
+      const title = args.title.trim();
+      if (!title) throw new Error("Course title is required");
+      patch.title = title;
+    }
+    if (args.description !== undefined) {
+      patch.description = args.description.trim() || undefined;
+    }
+    if (args.subjectId !== undefined) {
+      const subject = await ctx.db.get("subjects", args.subjectId);
+      if (!subject) throw new Error("Subject not found");
+      patch.subjectId = args.subjectId;
+    }
+    if (args.externalSourceName !== undefined) {
+      if (course.type === "external" && !args.externalSourceName.trim()) {
+        throw new Error("External courses need a source name");
+      }
+      patch.externalSourceName = args.externalSourceName.trim() || undefined;
+    }
+
+    await ctx.db.patch("courses", args.courseId, patch);
+    return null;
+  },
+});
+
+export const remove = mutation({
+  args: { courseId: v.id("courses") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requireRole(ctx, ["parent", "teacher", "superAdmin"]);
+    await requireCourseWriteAccess(ctx, args.courseId);
+    await deleteCourseCascade(ctx, args.courseId);
+    return null;
+  },
+});
+
 export const addModule = mutation({
   args: {
     courseId: v.id("courses"),
@@ -255,18 +314,9 @@ export const addModule = mutation({
   returns: v.id("modules"),
   handler: async (ctx, args) => {
     await requireRole(ctx, ["parent", "teacher", "superAdmin"]);
-    const course = await ctx.db.get("courses", args.courseId);
-    if (!course) {
-      throw new Error("Course not found");
-    }
+    const { course } = await requireCourseWriteAccess(ctx, args.courseId);
     if (course.type !== "native") {
       throw new Error("Modules only apply to native courses");
-    }
-
-    if (course.familyId) {
-      await requireFamilyAccess(ctx, course.familyId);
-    } else if (course.academyId) {
-      await requireAcademyAccess(ctx, course.academyId);
     }
 
     let order = args.order;
@@ -287,6 +337,47 @@ export const addModule = mutation({
   },
 });
 
+export const updateModule = mutation({
+  args: {
+    moduleId: v.id("modules"),
+    title: v.optional(v.string()),
+    order: v.optional(v.number()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requireRole(ctx, ["parent", "teacher", "superAdmin"]);
+    const mod = await ctx.db.get("modules", args.moduleId);
+    if (!mod) throw new Error("Module not found");
+    await requireCourseWriteAccess(ctx, mod.courseId);
+
+    const patch: { title?: string; order?: number } = {};
+    if (args.title !== undefined) {
+      const title = args.title.trim();
+      if (!title) throw new Error("Module title is required");
+      patch.title = title;
+    }
+    if (args.order !== undefined) {
+      patch.order = args.order;
+    }
+    await ctx.db.patch("modules", args.moduleId, patch);
+    return null;
+  },
+});
+
+export const removeModule = mutation({
+  args: { moduleId: v.id("modules") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requireRole(ctx, ["parent", "teacher", "superAdmin"]);
+    const mod = await ctx.db.get("modules", args.moduleId);
+    if (!mod) throw new Error("Module not found");
+    await requireCourseWriteAccess(ctx, mod.courseId);
+    await deleteLessonsForModule(ctx, mod._id);
+    await ctx.db.delete("modules", mod._id);
+    return null;
+  },
+});
+
 export const addLesson = mutation({
   args: {
     moduleId: v.id("modules"),
@@ -301,14 +392,7 @@ export const addLesson = mutation({
     if (!mod) {
       throw new Error("Module not found");
     }
-
-    const course = await ctx.db.get("courses", mod.courseId);
-    if (!course) throw new Error("Course not found");
-    if (course.familyId) {
-      await requireFamilyAccess(ctx, course.familyId);
-    } else if (course.academyId) {
-      await requireAcademyAccess(ctx, course.academyId);
-    }
+    await requireCourseWriteAccess(ctx, mod.courseId);
 
     let order = args.order;
     if (order === undefined) {
@@ -326,5 +410,57 @@ export const addLesson = mutation({
       estimatedMinutes: args.estimatedMinutes,
       createdAt: Date.now(),
     });
+  },
+});
+
+export const updateLesson = mutation({
+  args: {
+    lessonId: v.id("lessons"),
+    title: v.optional(v.string()),
+    order: v.optional(v.number()),
+    estimatedMinutes: v.optional(v.number()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requireRole(ctx, ["parent", "teacher", "superAdmin"]);
+    const lesson = await ctx.db.get("lessons", args.lessonId);
+    if (!lesson) throw new Error("Lesson not found");
+    const mod = await ctx.db.get("modules", lesson.moduleId);
+    if (!mod) throw new Error("Module not found");
+    await requireCourseWriteAccess(ctx, mod.courseId);
+
+    const patch: {
+      title?: string;
+      order?: number;
+      estimatedMinutes?: number;
+    } = {};
+    if (args.title !== undefined) {
+      const title = args.title.trim();
+      if (!title) throw new Error("Lesson title is required");
+      patch.title = title;
+    }
+    if (args.order !== undefined) {
+      patch.order = args.order;
+    }
+    if (args.estimatedMinutes !== undefined) {
+      patch.estimatedMinutes = args.estimatedMinutes;
+    }
+    await ctx.db.patch("lessons", args.lessonId, patch);
+    return null;
+  },
+});
+
+export const removeLesson = mutation({
+  args: { lessonId: v.id("lessons") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requireRole(ctx, ["parent", "teacher", "superAdmin"]);
+    const lesson = await ctx.db.get("lessons", args.lessonId);
+    if (!lesson) throw new Error("Lesson not found");
+    const mod = await ctx.db.get("modules", lesson.moduleId);
+    if (!mod) throw new Error("Module not found");
+    await requireCourseWriteAccess(ctx, mod.courseId);
+    await ctx.db.delete("lessons", args.lessonId);
+    return null;
   },
 });

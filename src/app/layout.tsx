@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import { ConvexAuthNextjsServerProvider } from "@convex-dev/auth/nextjs/server";
 import { Source_Sans_3 } from "next/font/google";
+import { Suspense } from "react";
 import { ConvexClientProvider } from "@/components/ConvexClientProvider";
 import { Nav } from "@/components/Nav";
+import { ViewAsBanner } from "@/components/ViewAsBanner";
 import "./globals.css";
 
 const sourceSans = Source_Sans_3({
@@ -26,6 +28,9 @@ export default function RootLayout({
         <body className="min-h-full bg-neutral-50 font-sans text-neutral-900">
           <ConvexClientProvider>
             <Nav />
+            <Suspense fallback={null}>
+              <ViewAsBanner />
+            </Suspense>
             <main className="mx-auto w-full max-w-4xl px-4 py-6">{children}</main>
           </ConvexClientProvider>
         </body>

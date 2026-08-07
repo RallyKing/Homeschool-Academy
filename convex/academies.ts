@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import {
+  deleteAcademyCascade,
   getCurrentUser,
   getPrimaryAcademyForUser,
   getPrimaryFamilyForUser,
@@ -122,6 +123,115 @@ export const update = mutation({
     }
     await ctx.db.patch("academies", args.academyId, patch);
     return null;
+  },
+});
+
+export const remove = mutation({
+  args: { academyId: v.id("academies") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { user, academy } = await requireAcademyAccess(ctx, args.academyId);
+    if (
+      user.role !== "superAdmin" &&
+      academy.createdBy !== user._id
+    ) {
+      throw new Error("Only the academy creator or superAdmin can delete");
+    }
+    await deleteAcademyCascade(ctx, args.academyId);
+    return null;
+  },
+});
+
+export const addMember = mutation({
+  args: {
+    academyId: v.id("academies"),
+    userId: v.id("users"),
+    role: v.union(v.literal("teacher"), v.literal("admin")),
+  },
+  returns: v.id("academyMembers"),
+  handler: async (ctx, args) => {
+    await requireAcademyAccess(ctx, args.academyId);
+
+    const existing = await ctx.db
+      .query("academyMembers")
+      .withIndex("by_academy_and_user", (q) =>
+        q.eq("academyId", args.academyId).eq("userId", args.userId),
+      )
+      .unique();
+
+    if (existing) {
+      return existing._id;
+    }
+
+    return await ctx.db.insert("academyMembers", {
+      academyId: args.academyId,
+      userId: args.userId,
+      role: args.role,
+      createdAt: Date.now(),
+    });
+  },
+});
+
+export const removeMember = mutation({
+  args: {
+    academyId: v.id("academies"),
+    userId: v.id("users"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { academy } = await requireAcademyAccess(ctx, args.academyId);
+    if (args.userId === academy.createdBy) {
+      throw new Error("Cannot remove the academy creator");
+    }
+
+    const membership = await ctx.db
+      .query("academyMembers")
+      .withIndex("by_academy_and_user", (q) =>
+        q.eq("academyId", args.academyId).eq("userId", args.userId),
+      )
+      .unique();
+
+    if (!membership) {
+      throw new Error("Member not found");
+    }
+
+    await ctx.db.delete("academyMembers", membership._id);
+    return null;
+  },
+});
+
+export const listMembers = query({
+  args: { academyId: v.id("academies") },
+  returns: v.array(
+    v.object({
+      membershipId: v.id("academyMembers"),
+      userId: v.id("users"),
+      role: v.union(v.literal("teacher"), v.literal("admin")),
+      email: v.optional(v.string()),
+      name: v.optional(v.string()),
+      createdAt: v.number(),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    await requireAcademyAccess(ctx, args.academyId);
+    const members = await ctx.db
+      .query("academyMembers")
+      .withIndex("by_academy", (q) => q.eq("academyId", args.academyId))
+      .collect();
+
+    const result = [];
+    for (const m of members) {
+      const u = await ctx.db.get("users", m.userId);
+      result.push({
+        membershipId: m._id,
+        userId: m.userId,
+        role: m.role,
+        email: u?.email,
+        name: u?.name,
+        createdAt: m.createdAt,
+      });
+    }
+    return result;
   },
 });
 

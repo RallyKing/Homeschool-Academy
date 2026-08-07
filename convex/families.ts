@@ -1,12 +1,22 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import {
+  deleteFamilyCascade,
   getCurrentUser,
   getPrimaryFamilyForUser,
   requireFamilyAccess,
   requireRole,
 } from "./lib/auth";
 import { familyDocValidator } from "./lib/validators";
+
+const familyMemberDocValidator = v.object({
+  _id: v.id("familyMembers"),
+  _creationTime: v.number(),
+  familyId: v.id("families"),
+  userId: v.id("users"),
+  role: v.union(v.literal("parent"), v.literal("guardian")),
+  createdAt: v.number(),
+});
 
 export const create = mutation({
   args: { name: v.string() },
@@ -53,12 +63,61 @@ export const update = mutation({
   },
 });
 
+export const remove = mutation({
+  args: { familyId: v.id("families") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { user } = await requireFamilyAccess(ctx, args.familyId);
+    const family = await ctx.db.get("families", args.familyId);
+    if (!family) {
+      throw new Error("Family not found");
+    }
+    if (
+      user.role !== "superAdmin" &&
+      family.createdBy !== user._id
+    ) {
+      throw new Error("Only the family creator or superAdmin can delete");
+    }
+    await deleteFamilyCascade(ctx, args.familyId);
+    return null;
+  },
+});
+
 export const get = query({
   args: { familyId: v.id("families") },
   returns: v.union(familyDocValidator, v.null()),
   handler: async (ctx, args) => {
     await requireFamilyAccess(ctx, args.familyId);
     return await ctx.db.get("families", args.familyId);
+  },
+});
+
+export const listMembers = query({
+  args: { familyId: v.id("families") },
+  returns: v.array(
+    v.object({
+      membership: familyMemberDocValidator,
+      email: v.optional(v.string()),
+      name: v.optional(v.string()),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    await requireFamilyAccess(ctx, args.familyId);
+    const members = await ctx.db
+      .query("familyMembers")
+      .withIndex("by_family", (q) => q.eq("familyId", args.familyId))
+      .collect();
+
+    const result = [];
+    for (const membership of members) {
+      const u = await ctx.db.get("users", membership.userId);
+      result.push({
+        membership,
+        email: u?.email,
+        name: u?.name,
+      });
+    }
+    return result;
   },
 });
 
@@ -110,6 +169,43 @@ export const addMember = mutation({
       role: args.role,
       createdAt: Date.now(),
     });
+  },
+});
+
+export const removeMember = mutation({
+  args: {
+    familyId: v.id("families"),
+    userId: v.id("users"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { user } = await requireFamilyAccess(ctx, args.familyId);
+    const family = await ctx.db.get("families", args.familyId);
+    if (!family) {
+      throw new Error("Family not found");
+    }
+
+    if (args.userId === family.createdBy) {
+      throw new Error("Cannot remove the family creator");
+    }
+
+    if (args.userId === user._id && user.role !== "superAdmin") {
+      // Allow self-leave except creator (blocked above)
+    }
+
+    const membership = await ctx.db
+      .query("familyMembers")
+      .withIndex("by_family_and_user", (q) =>
+        q.eq("familyId", args.familyId).eq("userId", args.userId),
+      )
+      .unique();
+
+    if (!membership) {
+      throw new Error("Member not found");
+    }
+
+    await ctx.db.delete("familyMembers", membership._id);
+    return null;
   },
 });
 

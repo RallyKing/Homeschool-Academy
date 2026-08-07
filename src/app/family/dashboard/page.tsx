@@ -14,9 +14,16 @@ export default function FamilyDashboardPage() {
   const students = useQuery(api.students.listForMyFamily);
   const ensureFamily = useMutation(api.families.ensureMine);
   const updateFamily = useMutation(api.families.update);
+  const removeFamily = useMutation(api.families.remove);
   const createStudent = useMutation(api.students.create);
   const updateStudent = useMutation(api.students.update);
+  const removeStudent = useMutation(api.students.remove);
   const linkByEmail = useMutation(api.students.linkByEmail);
+  const familyMembers = useQuery(
+    api.families.listMembers,
+    family ? { familyId: family._id } : "skip",
+  );
+  const removeMember = useMutation(api.families.removeMember);
   const seedSubjects = useMutation(api.subjects.seed);
   const router = useRouter();
 
@@ -161,6 +168,26 @@ export default function FamilyDashboardPage() {
             >
               Rename
             </button>
+            <button
+              type="button"
+              className="border border-red-700 px-3 py-1.5 text-sm text-red-700"
+              onClick={() => {
+                if (
+                  !window.confirm(
+                    "Delete this family and all students, logs, schedules, and family courses? This cannot be undone.",
+                  )
+                ) {
+                  return;
+                }
+                void removeFamily({ familyId: family._id })
+                  .then(() => setMessage("Family deleted."))
+                  .catch((err) =>
+                    setMessage(err instanceof Error ? err.message : "Failed"),
+                  );
+              }}
+            >
+              Delete family
+            </button>
           </form>
         )}
       </div>
@@ -205,18 +232,54 @@ export default function FamilyDashboardPage() {
                   {s.birthYear ? ` · born ${s.birthYear}` : ""}
                   {s.userId ? " · linked" : ""}
                 </span>
-                <button
-                  type="button"
-                  className="text-xs underline"
-                  onClick={() => {
-                    setEditStudentId(s._id);
-                    setName(s.displayName);
-                    setLevel(s.academicLevel ?? "");
-                    setBirthYear(s.birthYear ? String(s.birthYear) : "");
-                  }}
-                >
-                  Edit
-                </button>
+                <span className="flex gap-3 text-xs">
+                  <Link
+                    href={`/family/progress/${s._id}`}
+                    className="underline"
+                  >
+                    Progress dashboard
+                  </Link>
+                  <Link
+                    href={`/student/dashboard?as=${s._id}`}
+                    className="underline"
+                  >
+                    View as student
+                  </Link>
+                  <button
+                    type="button"
+                    className="underline"
+                    onClick={() => {
+                      setEditStudentId(s._id);
+                      setName(s.displayName);
+                      setLevel(s.academicLevel ?? "");
+                      setBirthYear(s.birthYear ? String(s.birthYear) : "");
+                    }}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    className="underline text-red-700"
+                    onClick={() => {
+                      if (
+                        !window.confirm(
+                          `Delete ${s.displayName} and all their logs/schedules?`,
+                        )
+                      ) {
+                        return;
+                      }
+                      void removeStudent({ studentId: s._id })
+                        .then(() => setMessage("Student deleted."))
+                        .catch((err) =>
+                          setMessage(
+                            err instanceof Error ? err.message : "Failed",
+                          ),
+                        );
+                    }}
+                  >
+                    Delete
+                  </button>
+                </span>
               </li>
             ))
           )}
@@ -274,6 +337,45 @@ export default function FamilyDashboardPage() {
           </div>
         </form>
       </section>
+
+      {family && familyMembers && familyMembers.length > 0 && (
+        <section className="space-y-3">
+          <h2 className="text-lg font-medium">Family members</h2>
+          <ul className="text-sm text-neutral-700">
+            {familyMembers.map(({ membership, email, name: memberName }) => (
+              <li
+                key={membership._id}
+                className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-100 py-2"
+              >
+                <span>
+                  {memberName ?? email ?? membership.userId} · {membership.role}
+                </span>
+                {membership.userId !== family.createdBy && (
+                  <button
+                    type="button"
+                    className="text-xs underline text-red-700"
+                    onClick={() => {
+                      if (!window.confirm("Remove this family member?")) return;
+                      void removeMember({
+                        familyId: family._id,
+                        userId: membership.userId,
+                      })
+                        .then(() => setMessage("Member removed."))
+                        .catch((err) =>
+                          setMessage(
+                            err instanceof Error ? err.message : "Failed",
+                          ),
+                        );
+                    }}
+                  >
+                    Remove
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {students && students.length > 0 && (
         <section className="space-y-3">
