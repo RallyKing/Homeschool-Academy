@@ -5,6 +5,7 @@ import { useAuthActions } from "@convex-dev/auth/react";
 import { useQuery } from "convex/react";
 import Link from "next/link";
 import { api } from "../../convex/_generated/api";
+import { InstallAppButton } from "@/components/InstallAppButton";
 import { useViewAsStudentId } from "@/hooks/useViewAsStudentId";
 import { withViewAs } from "@/lib/viewAs";
 import { Container } from "@/components/ui";
@@ -116,6 +117,7 @@ function NavInner() {
       <NavShell>
         <BrandLink />
         <nav className="flex items-center gap-1">
+          <InstallAppButton />
           <NavLink href="/sign-in">Sign in</NavLink>
           <Link
             href="/sign-up"
@@ -151,6 +153,7 @@ function NavInner() {
           </NavLink>
         ))}
         <span className="mx-1 hidden h-4 w-px bg-[var(--border-strong)] sm:inline-block" />
+        <InstallAppButton />
         <span className="hidden max-w-[10rem] truncate px-2 text-xs text-[var(--muted-fg)] sm:inline">
           {user.email ?? user.name}
         </span>

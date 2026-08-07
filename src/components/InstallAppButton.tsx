@@ -74,7 +74,7 @@ export function InstallAppButton() {
       <button
         type="button"
         onClick={() => void handleInstall()}
-        className="text-neutral-700 hover:underline"
+        className="rounded-[var(--radius-sm)] px-2.5 py-1.5 text-sm font-medium text-[var(--muted)] transition-colors duration-200 hover:bg-[var(--accent-soft)] hover:text-[var(--accent)]"
       >
         Install app
       </button>
@@ -83,11 +83,11 @@ export function InstallAppButton() {
 
   if (showIosTip) {
     return (
-      <details className="text-neutral-700">
-        <summary className="cursor-pointer list-none hover:underline">
+      <details className="relative px-2.5 py-1.5 text-sm font-medium text-[var(--muted)]">
+        <summary className="cursor-pointer list-none rounded-[var(--radius-sm)] hover:text-[var(--accent)]">
           Install app
         </summary>
-        <p className="mt-1 max-w-48 text-xs text-neutral-500">
+        <p className="absolute right-0 top-full z-50 mt-1 w-48 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-2 text-xs font-normal text-[var(--muted-fg)] shadow-sm">
           Tap Share, then &quot;Add to Home Screen&quot;.
         </p>
       </details>
