@@ -2,11 +2,42 @@
 
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useAction } from "convex/react";
+import { ConvexError } from "convex/values";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { api } from "../../../convex/_generated/api";
 import { Button, Card, Input, Message, PageHeader } from "@/components/ui";
+
+function formatResetError(err: unknown): string {
+  if (err instanceof ConvexError) {
+    const data = err.data;
+    if (typeof data === "string" && data.trim()) {
+      return data;
+    }
+  }
+  if (err instanceof Error && err.message.trim()) {
+    // Convex wraps action failures as:
+    // [CONVEX A(...)] [Request ID: ...] Server Error\n\nActual message
+    const lines = err.message
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
+    const meaningful = lines.find(
+      (l) =>
+        !l.startsWith("[CONVEX") &&
+        !l.startsWith("Called by") &&
+        l !== "Server Error",
+    );
+    if (meaningful) {
+      return meaningful;
+    }
+    if (!err.message.includes("Server Error")) {
+      return err.message;
+    }
+  }
+  return "Could not update password. Check the email and try again.";
+}
 
 export default function ResetPasswordPage() {
   const { signIn } = useAuthActions();
@@ -32,20 +63,17 @@ export default function ResetPasswordPage() {
         throw new Error("Password must be at least 8 characters");
       }
 
-      await setPasswordDirect({ email, newPassword });
+      const result = await setPasswordDirect({ email, newPassword });
 
+      // Sign in with normalized (lowercase) email returned by the action.
       const signInData = new FormData();
-      signInData.set("email", email);
+      signInData.set("email", result.email);
       signInData.set("password", newPassword);
       signInData.set("flow", "signIn");
       await signIn("password", signInData);
       router.push("/");
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Could not update password. Check the email and try again.",
-      );
+      setError(formatResetError(err));
     } finally {
       setLoading(false);
     }

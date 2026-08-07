@@ -21,8 +21,10 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
   providers: [
     Password<DataModel>({
       profile(params) {
+        const rawEmail = String(params.email ?? "").trim();
         return {
-          email: params.email as string,
+          // Normalize so reset/sign-in lookups are not casing-sensitive.
+          email: rawEmail.toLowerCase(),
           name: (params.name as string | undefined) ?? undefined,
           role: roleFromParams(params.role),
           createdAt: Date.now(),

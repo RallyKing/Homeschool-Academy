@@ -17,6 +17,8 @@ export default function SignInPage() {
     setError(null);
     setLoading(true);
     const formData = new FormData(event.currentTarget);
+    const email = String(formData.get("email") ?? "").trim().toLowerCase();
+    formData.set("email", email);
     try {
       await signIn("password", formData);
       router.push("/");
