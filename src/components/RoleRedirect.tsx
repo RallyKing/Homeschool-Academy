@@ -5,19 +5,16 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { api } from "../../convex/_generated/api";
 
-const roleHome: Record<string, string> = {
-  superAdmin: "/admin",
-  parent: "/family/dashboard",
-  teacher: "/academy/dashboard",
-  student: "/student/dashboard",
-};
-
 export function RoleRedirect({
   children,
 }: {
   children?: React.ReactNode;
 }) {
   const user = useQuery(api.users.current);
+  const status = useQuery(
+    api.users.onboardingStatus,
+    user ? {} : "skip",
+  );
   const router = useRouter();
 
   useEffect(() => {
@@ -26,10 +23,9 @@ export function RoleRedirect({
       router.replace("/sign-in");
       return;
     }
-    const role = user.role ?? "parent";
-    const dest = roleHome[role] ?? "/family/dashboard";
-    router.replace(dest);
-  }, [user, router]);
+    if (status === undefined) return;
+    router.replace(status.homePath);
+  }, [user, status, router]);
 
   return (
     children ?? (

@@ -113,6 +113,38 @@ export async function requireStudentFamilyAccess(
   return { user, student };
 }
 
+/** Family access OR linked student belonging to that family */
+export async function requireFamilyReadAccess(
+  ctx: Ctx,
+  familyId: Id<"families">,
+): Promise<Doc<"users">> {
+  const user = await getCurrentUser(ctx);
+  const family = await ctx.db.get("families", familyId);
+  if (!family) {
+    throw new Error("Family not found");
+  }
+
+  if (user.role === "superAdmin") {
+    return user;
+  }
+
+  const membership = await getFamilyMembership(ctx, familyId, user._id);
+  if (membership) {
+    return user;
+  }
+
+  const linked = await ctx.db
+    .query("students")
+    .withIndex("by_user", (q) => q.eq("userId", user._id))
+    .first();
+
+  if (linked && linked.familyId === familyId) {
+    return user;
+  }
+
+  throw new Error("Unauthorized: not a member of this family");
+}
+
 export async function getPrimaryFamilyForUser(
   ctx: Ctx,
   userId: Id<"users">,
@@ -127,4 +159,59 @@ export async function getPrimaryFamilyForUser(
   }
 
   return await ctx.db.get("families", membership.familyId);
+}
+
+export async function getAcademyMembership(
+  ctx: Ctx,
+  academyId: Id<"academies">,
+  userId: Id<"users">,
+): Promise<Doc<"academyMembers"> | null> {
+  return await ctx.db
+    .query("academyMembers")
+    .withIndex("by_academy_and_user", (q) =>
+      q.eq("academyId", academyId).eq("userId", userId),
+    )
+    .unique();
+}
+
+export async function requireAcademyAccess(
+  ctx: Ctx,
+  academyId: Id<"academies">,
+): Promise<{
+  user: Doc<"users">;
+  membership: Doc<"academyMembers"> | null;
+  academy: Doc<"academies">;
+}> {
+  const user = await getCurrentUser(ctx);
+  const academy = await ctx.db.get("academies", academyId);
+  if (!academy) {
+    throw new Error("Academy not found");
+  }
+
+  if (user.role === "superAdmin") {
+    const membership = await getAcademyMembership(ctx, academyId, user._id);
+    return { user, membership, academy };
+  }
+
+  const membership = await getAcademyMembership(ctx, academyId, user._id);
+  if (!membership) {
+    throw new Error("Unauthorized: not a member of this academy");
+  }
+  return { user, membership, academy };
+}
+
+export async function getPrimaryAcademyForUser(
+  ctx: Ctx,
+  userId: Id<"users">,
+): Promise<Doc<"academies"> | null> {
+  const membership = await ctx.db
+    .query("academyMembers")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .first();
+
+  if (!membership) {
+    return null;
+  }
+
+  return await ctx.db.get("academies", membership.academyId);
 }

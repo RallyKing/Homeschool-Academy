@@ -5,6 +5,7 @@ import {
   getPrimaryFamilyForUser,
   requireFamilyAccess,
   requireRole,
+  requireStudentFamilyAccess,
 } from "./lib/auth";
 import { studentDocValidator } from "./lib/validators";
 
@@ -59,13 +60,160 @@ export const create = mutation({
 
     await requireFamilyAccess(ctx, familyId);
 
+    const displayName = args.displayName.trim();
+    if (!displayName) {
+      throw new Error("Student name is required");
+    }
+
     return await ctx.db.insert("students", {
       familyId,
-      displayName: args.displayName,
+      displayName,
       birthYear: args.birthYear,
-      academicLevel: args.academicLevel,
+      academicLevel: args.academicLevel?.trim() || undefined,
       createdAt: Date.now(),
     });
+  },
+});
+
+export const update = mutation({
+  args: {
+    studentId: v.id("students"),
+    displayName: v.optional(v.string()),
+    birthYear: v.optional(v.number()),
+    academicLevel: v.optional(v.string()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { user, student } = await requireStudentFamilyAccess(
+      ctx,
+      args.studentId,
+    );
+
+    if (user.role !== "parent" && user.role !== "superAdmin") {
+      throw new Error("Only parents can edit student profiles");
+    }
+
+    const patch: {
+      displayName?: string;
+      birthYear?: number;
+      academicLevel?: string;
+    } = {};
+
+    if (args.displayName !== undefined) {
+      const name = args.displayName.trim();
+      if (!name) throw new Error("Student name is required");
+      patch.displayName = name;
+    }
+    if (args.birthYear !== undefined) {
+      patch.birthYear = args.birthYear;
+    }
+    if (args.academicLevel !== undefined) {
+      patch.academicLevel = args.academicLevel.trim() || undefined;
+    }
+
+    await ctx.db.patch("students", student._id, patch);
+    return null;
+  },
+});
+
+export const linkToCurrentUser = mutation({
+  args: { studentId: v.id("students") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
+    const student = await ctx.db.get("students", args.studentId);
+    if (!student) {
+      throw new Error("Student not found");
+    }
+
+    // Parent can link a family student to a user, or student can claim themselves
+    if (user.role === "parent" || user.role === "superAdmin") {
+      await requireFamilyAccess(ctx, student.familyId);
+    } else if (user.role === "student") {
+      await requireFamilyAccess(ctx, student.familyId);
+      if (student.userId && student.userId !== user._id) {
+        throw new Error("Student profile already linked to another account");
+      }
+    } else {
+      throw new Error("Unauthorized");
+    }
+
+    await ctx.db.patch("students", args.studentId, { userId: user._id });
+    return null;
+  },
+});
+
+export const linkByEmail = mutation({
+  args: {
+    studentId: v.id("students"),
+    email: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { user, student } = await requireStudentFamilyAccess(
+      ctx,
+      args.studentId,
+    );
+    if (user.role !== "parent" && user.role !== "superAdmin") {
+      throw new Error("Only parents can link student accounts");
+    }
+
+    const email = args.email.trim().toLowerCase();
+    const target = await ctx.db
+      .query("users")
+      .withIndex("email", (q) => q.eq("email", email))
+      .unique();
+
+    if (!target) {
+      throw new Error("No user found with that email. Have them sign up first.");
+    }
+
+    await ctx.db.patch("students", student._id, { userId: target._id });
+    if (!target.role) {
+      await ctx.db.patch("users", target._id, { role: "student" });
+    }
+    return null;
+  },
+});
+
+export const claimByName = mutation({
+  args: {
+    familyName: v.string(),
+    displayName: v.string(),
+  },
+  returns: v.id("students"),
+  handler: async (ctx, args) => {
+    const user = await requireRole(ctx, ["student", "superAdmin"]);
+
+    const familyName = args.familyName.trim();
+    const families = await ctx.db
+      .query("families")
+      .withIndex("by_name", (q) => q.eq("name", familyName))
+      .collect();
+
+    if (families.length === 0) {
+      throw new Error("No family found with that exact name");
+    }
+
+    const name = args.displayName.trim();
+    for (const family of families) {
+      const students = await ctx.db
+        .query("students")
+        .withIndex("by_family", (q) => q.eq("familyId", family._id))
+        .collect();
+      const match = students.find(
+        (s) => s.displayName.toLowerCase() === name.toLowerCase(),
+      );
+      if (match) {
+        if (match.userId && match.userId !== user._id) {
+          throw new Error("That student profile is already linked");
+        }
+        await ctx.db.patch("students", match._id, { userId: user._id });
+        return match._id;
+      }
+    }
+
+    throw new Error("No matching student profile in that family");
   },
 });
 
@@ -77,7 +225,19 @@ export const get = query({
     if (!student) {
       return null;
     }
-    await requireFamilyAccess(ctx, student.familyId);
+    await requireStudentFamilyAccess(ctx, args.studentId);
     return student;
+  },
+});
+
+export const myProfile = query({
+  args: {},
+  returns: v.union(studentDocValidator, v.null()),
+  handler: async (ctx) => {
+    const user = await getCurrentUser(ctx);
+    return await ctx.db
+      .query("students")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .first();
   },
 });

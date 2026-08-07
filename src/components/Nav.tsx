@@ -9,16 +9,25 @@ const linksByRole: Record<string, Array<{ href: string; label: string }>> = {
   superAdmin: [
     { href: "/admin", label: "Admin" },
     { href: "/family/dashboard", label: "Family" },
+    { href: "/family/planner", label: "Planner" },
+    { href: "/family/ledger", label: "Ledger" },
     { href: "/academy/dashboard", label: "Academy" },
+    { href: "/family/ai", label: "AI" },
   ],
   parent: [
     { href: "/family/dashboard", label: "Family" },
+    { href: "/family/courses", label: "Courses" },
+    { href: "/family/planner", label: "Planner" },
+    { href: "/family/ledger", label: "Ledger" },
+    { href: "/family/academies", label: "Academies" },
+    { href: "/family/progress", label: "Progress" },
+    { href: "/family/ai", label: "AI" },
   ],
   teacher: [
     { href: "/academy/dashboard", label: "Academy" },
   ],
   student: [
-    { href: "/student/dashboard", label: "Student" },
+    { href: "/student/dashboard", label: "Today" },
   ],
 };
 

@@ -3,10 +3,15 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import {
   getCurrentUser,
+  getPrimaryAcademyForUser,
   getPrimaryFamilyForUser,
   requireRole,
 } from "./lib/auth";
-import { familyDocValidator, roleValidator, userDocValidator } from "./lib/validators";
+import {
+  familyDocValidator,
+  roleValidator,
+  userDocValidator,
+} from "./lib/validators";
 
 export const current = query({
   args: {},
@@ -25,7 +30,6 @@ export const setRole = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const user = await getCurrentUser(ctx);
-    // Only allow self-assignment of non-admin roles; superAdmin via seed/admin
     if (args.role === "superAdmin" && user.role !== "superAdmin") {
       throw new Error("Cannot self-assign superAdmin");
     }
@@ -71,5 +75,55 @@ export const myFamily = query({
   handler: async (ctx) => {
     const user = await getCurrentUser(ctx);
     return await getPrimaryFamilyForUser(ctx, user._id);
+  },
+});
+
+export const onboardingStatus = query({
+  args: {},
+  returns: v.object({
+    role: v.union(roleValidator, v.null()),
+    needsOnboarding: v.boolean(),
+    hasFamily: v.boolean(),
+    hasAcademy: v.boolean(),
+    hasStudentProfile: v.boolean(),
+    homePath: v.string(),
+  }),
+  handler: async (ctx) => {
+    const user = await getCurrentUser(ctx);
+    const role = user.role ?? null;
+    const family = await getPrimaryFamilyForUser(ctx, user._id);
+    const academy = await getPrimaryAcademyForUser(ctx, user._id);
+
+    const linkedStudent = await ctx.db
+      .query("students")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .first();
+
+    let needsOnboarding = false;
+    let homePath = "/family/dashboard";
+
+    if (role === "superAdmin") {
+      homePath = "/admin";
+      needsOnboarding = false;
+    } else if (role === "teacher") {
+      homePath = academy ? "/academy/dashboard" : "/onboarding";
+      needsOnboarding = !academy;
+    } else if (role === "student") {
+      homePath = "/student/dashboard";
+      needsOnboarding = false;
+    } else {
+      // parent (default)
+      homePath = family ? "/family/dashboard" : "/onboarding";
+      needsOnboarding = !family;
+    }
+
+    return {
+      role,
+      needsOnboarding,
+      hasFamily: family !== null,
+      hasAcademy: academy !== null,
+      hasStudentProfile: linkedStudent !== null,
+      homePath,
+    };
   },
 });

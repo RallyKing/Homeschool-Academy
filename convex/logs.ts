@@ -1,7 +1,16 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { requireStudentFamilyAccess } from "./lib/auth";
+import { getCurrentUser, requireStudentFamilyAccess } from "./lib/auth";
 import { entryTypeValidator, logDocValidator } from "./lib/validators";
+
+export const generateUploadUrl = mutation({
+  args: {},
+  returns: v.string(),
+  handler: async (ctx) => {
+    await getCurrentUser(ctx);
+    return await ctx.storage.generateUploadUrl();
+  },
+});
 
 export const create = mutation({
   args: {
@@ -41,7 +50,7 @@ export const create = mutation({
       subjectId: args.subjectId,
       entryType: args.entryType,
       durationMinutes: args.durationMinutes,
-      notes: args.notes,
+      notes: args.notes?.trim() || undefined,
       storageId: args.storageId,
       verifiedByParent: false,
       createdBy: user._id,
@@ -60,15 +69,13 @@ export const listForStudent = query({
     await requireStudentFamilyAccess(ctx, args.studentId);
 
     const limit = Math.min(args.limit ?? 50, 100);
-    const logs = await ctx.db
+    return await ctx.db
       .query("logs")
       .withIndex("by_student_and_createdAt", (q) =>
         q.eq("studentId", args.studentId),
       )
       .order("desc")
       .take(limit);
-
-    return logs;
   },
 });
 
@@ -91,5 +98,78 @@ export const verify = mutation({
       verifiedBy: user._id,
     });
     return null;
+  },
+});
+
+export const getFileUrl = query({
+  args: { storageId: v.id("_storage") },
+  returns: v.union(v.string(), v.null()),
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+    return await ctx.storage.getUrl(args.storageId);
+  },
+});
+
+export const progressSummary = query({
+  args: {
+    studentId: v.id("students"),
+    since: v.optional(v.number()),
+  },
+  returns: v.object({
+    totalMinutes: v.number(),
+    verifiedMinutes: v.number(),
+    entryCount: v.number(),
+    verifiedCount: v.number(),
+    byEntryType: v.object({
+      native_completion: v.number(),
+      external_time: v.number(),
+      manual: v.number(),
+    }),
+    recent: v.array(logDocValidator),
+  }),
+  handler: async (ctx, args) => {
+    await requireStudentFamilyAccess(ctx, args.studentId);
+
+    const logs = await ctx.db
+      .query("logs")
+      .withIndex("by_student_and_createdAt", (q) =>
+        q.eq("studentId", args.studentId),
+      )
+      .order("desc")
+      .take(200);
+
+    const filtered = args.since
+      ? logs.filter((l) => l.createdAt >= args.since!)
+      : logs;
+
+    let totalMinutes = 0;
+    let verifiedMinutes = 0;
+    let verifiedCount = 0;
+    const byEntryType = {
+      native_completion: 0,
+      external_time: 0,
+      manual: 0,
+    };
+
+    for (const log of filtered) {
+      totalMinutes += log.durationMinutes;
+      byEntryType[log.entryType] += log.durationMinutes;
+      if (log.verifiedByParent) {
+        verifiedMinutes += log.durationMinutes;
+        verifiedCount += 1;
+      }
+    }
+
+    return {
+      totalMinutes,
+      verifiedMinutes,
+      entryCount: filtered.length,
+      verifiedCount,
+      byEntryType,
+      recent: filtered.slice(0, 15),
+    };
   },
 });

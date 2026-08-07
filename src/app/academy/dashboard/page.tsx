@@ -1,15 +1,120 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
+import { useRouter } from "next/navigation";
 import { api } from "../../../../convex/_generated/api";
+import type { Id } from "../../../../convex/_generated/dataModel";
 
 export default function AcademyDashboardPage() {
   const user = useQuery(api.users.current);
+  const status = useQuery(api.users.onboardingStatus);
   const academies = useQuery(api.academies.myAcademies);
+  const subjects = useQuery(api.subjects.list);
   const createAcademy = useMutation(api.academies.create);
+  const updateAcademy = useMutation(api.academies.update);
+  const createCourse = useMutation(api.courses.create);
+  const addModule = useMutation(api.courses.addModule);
+  const addLesson = useMutation(api.courses.addLesson);
+  const seedSubjects = useMutation(api.subjects.seed);
+  const router = useRouter();
+
   const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [selectedAcademy, setSelectedAcademy] = useState("");
+  const [courseTitle, setCourseTitle] = useState("");
+  const [subjectId, setSubjectId] = useState("");
+  const [moduleTitle, setModuleTitle] = useState("");
+  const [lessonTitle, setLessonTitle] = useState("");
+  const [selectedCourse, setSelectedCourse] = useState("");
   const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (status?.needsOnboarding) {
+      router.replace("/onboarding");
+    }
+  }, [status, router]);
+
+  const academyId = (selectedAcademy || academies?.[0]?._id || "") as
+    | Id<"academies">
+    | "";
+
+  const courses = useQuery(
+    api.courses.listForAcademy,
+    academyId ? { academyId } : "skip",
+  );
+
+  const subscribers = useQuery(
+    api.academies.listSubscribers,
+    academyId ? { academyId } : "skip",
+  );
+
+  const structure = useQuery(
+    api.courses.getStructure,
+    selectedCourse
+      ? { courseId: selectedCourse as Id<"courses"> }
+      : "skip",
+  );
+
+  async function onCreate(e: FormEvent) {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setMessage(null);
+    try {
+      const id = await createAcademy({
+        name: name.trim(),
+        description: description.trim() || undefined,
+      });
+      setName("");
+      setDescription("");
+      setSelectedAcademy(id);
+      setMessage("Academy created.");
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Failed");
+    }
+  }
+
+  async function onUpdate(e: FormEvent) {
+    e.preventDefault();
+    if (!academyId) return;
+    try {
+      await updateAcademy({
+        academyId,
+        name: name.trim() || undefined,
+        description: description.trim() || undefined,
+      });
+      setMessage("Academy updated.");
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Failed");
+    }
+  }
+
+  async function onCreateCourse(e: FormEvent) {
+    e.preventDefault();
+    if (!academyId || !courseTitle.trim()) return;
+    try {
+      if (!subjects || subjects.length === 0) {
+        await seedSubjects({});
+      }
+      const sid = (subjectId || subjects?.[0]?._id) as Id<"subjects"> | undefined;
+      if (!sid) {
+        setMessage("Seed subjects first.");
+        return;
+      }
+      const id = await createCourse({
+        type: "native",
+        title: courseTitle.trim(),
+        subjectId: sid,
+        ownerType: "academy",
+        academyId,
+      });
+      setCourseTitle("");
+      setSelectedCourse(id);
+      setMessage("Course published.");
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Failed");
+    }
+  }
 
   if (user === undefined) {
     return <p className="text-sm text-neutral-500">Loading…</p>;
@@ -19,26 +124,12 @@ export default function AcademyDashboardPage() {
     return <p className="text-sm">Please sign in.</p>;
   }
 
-  async function onCreate(e: FormEvent) {
-    e.preventDefault();
-    if (!name.trim()) return;
-    setMessage(null);
-    try {
-      await createAcademy({ name: name.trim() });
-      setName("");
-      setMessage("Academy created.");
-    } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Failed");
-    }
-  }
-
   return (
-    <div className="space-y-6">
+    <div className="space-y-10">
       <div>
-        <h1 className="text-2xl font-semibold">Academy dashboard</h1>
+        <h1 className="text-2xl font-semibold">Academy</h1>
         <p className="text-sm text-neutral-600">
-          Teachers manage academy profiles and courses. Families subscribe to
-          access content.
+          Publish courses and see which families have subscribed.
         </p>
       </div>
 
@@ -52,27 +143,205 @@ export default function AcademyDashboardPage() {
           ) : (
             academies.map((a) => (
               <li key={a._id} className="border-b border-neutral-100 py-1">
-                {a.name}
+                <button
+                  type="button"
+                  className={
+                    academyId === a._id ? "font-medium underline" : ""
+                  }
+                  onClick={() => setSelectedAcademy(a._id)}
+                >
+                  {a.name}
+                </button>
+                {a.description ? ` — ${a.description}` : ""}
               </li>
             ))
           )}
         </ul>
       </section>
 
-      <form onSubmit={(e) => void onCreate(e)} className="flex gap-2">
+      <form
+        onSubmit={(e) => void (academyId ? onUpdate(e) : onCreate(e))}
+        className="space-y-2"
+      >
+        <h2 className="text-lg font-medium">
+          {academyId ? "Update profile" : "Create academy"}
+        </h2>
         <input
-          className="flex-1 border border-neutral-300 px-2 py-1.5 text-sm"
+          className="w-full border border-neutral-300 px-2 py-1.5 text-sm"
           placeholder="Academy name"
           value={name}
           onChange={(e) => setName(e.target.value)}
+        />
+        <textarea
+          className="w-full border border-neutral-300 px-2 py-1.5 text-sm"
+          placeholder="Description"
+          rows={2}
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
         />
         <button
           type="submit"
           className="border border-neutral-900 bg-neutral-900 px-3 py-1.5 text-sm text-white"
         >
-          Create
+          {academyId ? "Save profile" : "Create"}
         </button>
       </form>
+
+      {academyId && (
+        <>
+          <section className="space-y-3">
+            <h2 className="text-lg font-medium">Publish native course</h2>
+            <form onSubmit={(e) => void onCreateCourse(e)} className="space-y-2">
+              <input
+                className="w-full border border-neutral-300 px-2 py-1.5 text-sm"
+                placeholder="Course title"
+                value={courseTitle}
+                onChange={(e) => setCourseTitle(e.target.value)}
+                required
+              />
+              <select
+                className="w-full border border-neutral-300 px-2 py-1.5 text-sm"
+                value={subjectId || subjects?.[0]?._id || ""}
+                onChange={(e) => setSubjectId(e.target.value)}
+              >
+                {(subjects ?? []).map((s) => (
+                  <option key={s._id} value={s._id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="submit"
+                className="border border-neutral-400 px-3 py-1.5 text-sm"
+              >
+                Publish course
+              </button>
+            </form>
+
+            <ul className="text-sm">
+              {(courses ?? []).map((c) => (
+                <li key={c._id} className="border-b border-neutral-100 py-1">
+                  <button
+                    type="button"
+                    className={
+                      selectedCourse === c._id ? "font-medium underline" : ""
+                    }
+                    onClick={() => setSelectedCourse(c._id)}
+                  >
+                    {c.title}
+                  </button>
+                </li>
+              ))}
+            </ul>
+
+            {structure && structure.course.type === "native" && (
+              <div className="space-y-3 border-t border-neutral-200 pt-3">
+                <ul className="text-sm">
+                  {structure.modules.map(({ module, lessons }) => (
+                    <li key={module._id} className="mb-2">
+                      <p className="font-medium">{module.title}</p>
+                      <ul className="ml-3 list-disc">
+                        {lessons.map((l) => (
+                          <li key={l._id}>{l.title}</li>
+                        ))}
+                      </ul>
+                    </li>
+                  ))}
+                </ul>
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (!selectedCourse || !moduleTitle.trim()) return;
+                    void addModule({
+                      courseId: selectedCourse as Id<"courses">,
+                      title: moduleTitle.trim(),
+                    })
+                      .then(() => {
+                        setModuleTitle("");
+                        setMessage("Module added.");
+                      })
+                      .catch((err) =>
+                        setMessage(
+                          err instanceof Error ? err.message : "Failed",
+                        ),
+                      );
+                  }}
+                  className="flex gap-2"
+                >
+                  <input
+                    className="flex-1 border border-neutral-300 px-2 py-1.5 text-sm"
+                    placeholder="Module title"
+                    value={moduleTitle}
+                    onChange={(e) => setModuleTitle(e.target.value)}
+                  />
+                  <button
+                    type="submit"
+                    className="border border-neutral-400 px-3 py-1.5 text-sm"
+                  >
+                    Add module
+                  </button>
+                </form>
+                {structure.modules[0] && (
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const modId = structure.modules[0]?.module._id;
+                      if (!modId || !lessonTitle.trim()) return;
+                      void addLesson({
+                        moduleId: modId,
+                        title: lessonTitle.trim(),
+                      })
+                        .then(() => {
+                          setLessonTitle("");
+                          setMessage("Lesson added.");
+                        })
+                        .catch((err) =>
+                          setMessage(
+                            err instanceof Error ? err.message : "Failed",
+                          ),
+                        );
+                    }}
+                    className="flex gap-2"
+                  >
+                    <input
+                      className="flex-1 border border-neutral-300 px-2 py-1.5 text-sm"
+                      placeholder="Lesson title"
+                      value={lessonTitle}
+                      onChange={(e) => setLessonTitle(e.target.value)}
+                    />
+                    <button
+                      type="submit"
+                      className="border border-neutral-400 px-3 py-1.5 text-sm"
+                    >
+                      Add lesson
+                    </button>
+                  </form>
+                )}
+              </div>
+            )}
+          </section>
+
+          <section className="space-y-2">
+            <h2 className="text-lg font-medium">Subscribed families</h2>
+            <ul className="text-sm">
+              {subscribers === undefined ? (
+                <li>Loading…</li>
+              ) : subscribers.length === 0 ? (
+                <li className="text-neutral-500">No subscribers yet.</li>
+              ) : (
+                subscribers.map((s) => (
+                  <li
+                    key={s.subscriptionId}
+                    className="border-b border-neutral-100 py-1"
+                  >
+                    {s.familyName} · {s.status}
+                  </li>
+                ))
+              )}
+            </ul>
+          </section>
+        </>
+      )}
 
       {message && <p className="text-sm text-neutral-600">{message}</p>}
     </div>

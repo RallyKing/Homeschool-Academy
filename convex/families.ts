@@ -16,7 +16,7 @@ export const create = mutation({
     const now = Date.now();
 
     const familyId = await ctx.db.insert("families", {
-      name: args.name,
+      name: args.name.trim(),
       createdBy: user._id,
       createdAt: now,
     });
@@ -28,11 +28,28 @@ export const create = mutation({
       createdAt: now,
     });
 
-    if (!user.role) {
+    if (!user.role || user.role === "student") {
       await ctx.db.patch("users", user._id, { role: "parent" });
     }
 
     return familyId;
+  },
+});
+
+export const update = mutation({
+  args: {
+    familyId: v.id("families"),
+    name: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requireFamilyAccess(ctx, args.familyId);
+    const name = args.name.trim();
+    if (!name) {
+      throw new Error("Family name is required");
+    }
+    await ctx.db.patch("families", args.familyId, { name });
+    return null;
   },
 });
 
@@ -108,7 +125,7 @@ export const ensureMine = mutation({
 
     const now = Date.now();
     const familyId = await ctx.db.insert("families", {
-      name: args.name ?? `${user.name ?? "Family"} Household`,
+      name: args.name?.trim() || `${user.name ?? "Family"} Household`,
       createdBy: user._id,
       createdAt: now,
     });
@@ -119,6 +136,10 @@ export const ensureMine = mutation({
       role: "parent",
       createdAt: now,
     });
+
+    if (!user.role) {
+      await ctx.db.patch("users", user._id, { role: "parent" });
+    }
 
     return familyId;
   },

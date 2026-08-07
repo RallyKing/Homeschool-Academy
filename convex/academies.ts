@@ -1,6 +1,13 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { getCurrentUser, requireRole } from "./lib/auth";
+import {
+  getCurrentUser,
+  getPrimaryAcademyForUser,
+  getPrimaryFamilyForUser,
+  requireAcademyAccess,
+  requireFamilyAccess,
+  requireRole,
+} from "./lib/auth";
 
 const academyDocValidator = v.object({
   _id: v.id("academies"),
@@ -9,6 +16,20 @@ const academyDocValidator = v.object({
   createdBy: v.id("users"),
   description: v.optional(v.string()),
   createdAt: v.number(),
+});
+
+const subscriptionDocValidator = v.object({
+  _id: v.id("familyAcademySubscriptions"),
+  _creationTime: v.number(),
+  familyId: v.id("families"),
+  academyId: v.id("academies"),
+  status: v.union(
+    v.literal("active"),
+    v.literal("pending"),
+    v.literal("cancelled"),
+  ),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
 });
 
 export const create = mutation({
@@ -20,10 +41,48 @@ export const create = mutation({
   handler: async (ctx, args) => {
     const user = await requireRole(ctx, ["teacher", "superAdmin"]);
     const now = Date.now();
+    const name = args.name.trim();
+    if (!name) throw new Error("Academy name is required");
 
     const academyId = await ctx.db.insert("academies", {
-      name: args.name,
-      description: args.description,
+      name,
+      description: args.description?.trim() || undefined,
+      createdBy: user._id,
+      createdAt: now,
+    });
+
+    await ctx.db.insert("academyMembers", {
+      academyId,
+      userId: user._id,
+      role: "admin",
+      createdAt: now,
+    });
+
+    if (!user.role || user.role === "student") {
+      await ctx.db.patch("users", user._id, { role: "teacher" });
+    }
+
+    return academyId;
+  },
+});
+
+export const ensureMine = mutation({
+  args: {
+    name: v.optional(v.string()),
+    description: v.optional(v.string()),
+  },
+  returns: v.id("academies"),
+  handler: async (ctx, args) => {
+    const user = await requireRole(ctx, ["teacher", "superAdmin"]);
+    const existing = await getPrimaryAcademyForUser(ctx, user._id);
+    if (existing) {
+      return existing._id;
+    }
+
+    const now = Date.now();
+    const academyId = await ctx.db.insert("academies", {
+      name: args.name?.trim() || `${user.name ?? "Teacher"} Academy`,
+      description: args.description?.trim() || undefined,
       createdBy: user._id,
       createdAt: now,
     });
@@ -40,6 +99,29 @@ export const create = mutation({
     }
 
     return academyId;
+  },
+});
+
+export const update = mutation({
+  args: {
+    academyId: v.id("academies"),
+    name: v.optional(v.string()),
+    description: v.optional(v.string()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requireAcademyAccess(ctx, args.academyId);
+    const patch: { name?: string; description?: string } = {};
+    if (args.name !== undefined) {
+      const name = args.name.trim();
+      if (!name) throw new Error("Academy name is required");
+      patch.name = name;
+    }
+    if (args.description !== undefined) {
+      patch.description = args.description.trim() || undefined;
+    }
+    await ctx.db.patch("academies", args.academyId, patch);
+    return null;
   },
 });
 
@@ -64,6 +146,15 @@ export const myAcademies = query({
   },
 });
 
+export const listBrowsable = query({
+  args: {},
+  returns: v.array(academyDocValidator),
+  handler: async (ctx) => {
+    await getCurrentUser(ctx);
+    return await ctx.db.query("academies").take(100);
+  },
+});
+
 export const listAll = query({
   args: {},
   returns: v.array(academyDocValidator),
@@ -75,17 +166,33 @@ export const listAll = query({
 
 export const subscribeFamily = mutation({
   args: {
-    familyId: v.id("families"),
+    familyId: v.optional(v.id("families")),
     academyId: v.id("academies"),
   },
   returns: v.id("familyAcademySubscriptions"),
   handler: async (ctx, args) => {
-    await requireRole(ctx, ["parent", "superAdmin"]);
+    const user = await requireRole(ctx, ["parent", "superAdmin"]);
+
+    let familyId = args.familyId;
+    if (!familyId) {
+      const family = await getPrimaryFamilyForUser(ctx, user._id);
+      if (!family) {
+        throw new Error("Create a family before subscribing to academies");
+      }
+      familyId = family._id;
+    }
+
+    await requireFamilyAccess(ctx, familyId);
+
+    const academy = await ctx.db.get("academies", args.academyId);
+    if (!academy) {
+      throw new Error("Academy not found");
+    }
 
     const existing = await ctx.db
       .query("familyAcademySubscriptions")
       .withIndex("by_family_and_academy", (q) =>
-        q.eq("familyId", args.familyId).eq("academyId", args.academyId),
+        q.eq("familyId", familyId).eq("academyId", args.academyId),
       )
       .unique();
 
@@ -98,10 +205,114 @@ export const subscribeFamily = mutation({
     }
 
     return await ctx.db.insert("familyAcademySubscriptions", {
-      familyId: args.familyId,
+      familyId,
       academyId: args.academyId,
       status: "active",
       createdAt: Date.now(),
     });
+  },
+});
+
+export const unsubscribeFamily = mutation({
+  args: {
+    familyId: v.optional(v.id("families")),
+    academyId: v.id("academies"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const user = await requireRole(ctx, ["parent", "superAdmin"]);
+
+    let familyId = args.familyId;
+    if (!familyId) {
+      const family = await getPrimaryFamilyForUser(ctx, user._id);
+      if (!family) throw new Error("No family found");
+      familyId = family._id;
+    }
+
+    await requireFamilyAccess(ctx, familyId);
+
+    const existing = await ctx.db
+      .query("familyAcademySubscriptions")
+      .withIndex("by_family_and_academy", (q) =>
+        q.eq("familyId", familyId).eq("academyId", args.academyId),
+      )
+      .unique();
+
+    if (existing) {
+      await ctx.db.patch("familyAcademySubscriptions", existing._id, {
+        status: "cancelled",
+        updatedAt: Date.now(),
+      });
+    }
+    return null;
+  },
+});
+
+export const mySubscriptions = query({
+  args: {},
+  returns: v.array(
+    v.object({
+      subscription: subscriptionDocValidator,
+      academy: academyDocValidator,
+    }),
+  ),
+  handler: async (ctx) => {
+    const user = await getCurrentUser(ctx);
+    const family = await getPrimaryFamilyForUser(ctx, user._id);
+    if (!family) {
+      return [];
+    }
+
+    const subs = await ctx.db
+      .query("familyAcademySubscriptions")
+      .withIndex("by_family", (q) => q.eq("familyId", family._id))
+      .collect();
+
+    const result = [];
+    for (const subscription of subs) {
+      if (subscription.status !== "active") continue;
+      const academy = await ctx.db.get("academies", subscription.academyId);
+      if (academy) {
+        result.push({ subscription, academy });
+      }
+    }
+    return result;
+  },
+});
+
+export const listSubscribers = query({
+  args: { academyId: v.id("academies") },
+  returns: v.array(
+    v.object({
+      subscriptionId: v.id("familyAcademySubscriptions"),
+      familyId: v.id("families"),
+      familyName: v.string(),
+      status: v.string(),
+      createdAt: v.number(),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    await requireAcademyAccess(ctx, args.academyId);
+
+    const subs = await ctx.db
+      .query("familyAcademySubscriptions")
+      .withIndex("by_academy", (q) => q.eq("academyId", args.academyId))
+      .collect();
+
+    const result = [];
+    for (const sub of subs) {
+      if (sub.status !== "active") continue;
+      const family = await ctx.db.get("families", sub.familyId);
+      if (family) {
+        result.push({
+          subscriptionId: sub._id,
+          familyId: family._id,
+          familyName: family.name,
+          status: sub.status,
+          createdAt: sub.createdAt,
+        });
+      }
+    }
+    return result;
   },
 });
