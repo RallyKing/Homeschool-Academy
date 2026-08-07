@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
+import { alertFamily, alertStudent } from "./lib/alerts";
 import { getCurrentUser, requireStudentFamilyAccess } from "./lib/auth";
 import { entryTypeValidator, logDocValidator } from "./lib/validators";
 
@@ -25,7 +26,10 @@ export const create = mutation({
   },
   returns: v.id("logs"),
   handler: async (ctx, args) => {
-    const { user } = await requireStudentFamilyAccess(ctx, args.studentId);
+    const { user, student } = await requireStudentFamilyAccess(
+      ctx,
+      args.studentId,
+    );
 
     if (args.durationMinutes <= 0) {
       throw new Error("Duration must be greater than 0");
@@ -45,7 +49,7 @@ export const create = mutation({
       }
     }
 
-    return await ctx.db.insert("logs", {
+    const logId = await ctx.db.insert("logs", {
       studentId: args.studentId,
       courseId: args.courseId,
       subjectId: args.subjectId,
@@ -57,6 +61,21 @@ export const create = mutation({
       createdBy: user._id,
       createdAt: Date.now(),
     });
+
+    // Notify family when a student logged work; also when parent logs on their behalf
+    await alertFamily(ctx, {
+      familyId: student.familyId,
+      studentId: student._id,
+      type: "log_created",
+      title: "Learning log added",
+      body: `${student.displayName} logged ${args.durationMinutes} minutes (${args.entryType.replaceAll("_", " ")}).`,
+      href: "/family/ledger",
+      createdBy: user._id,
+      sourceTable: "logs",
+      sourceId: logId,
+    });
+
+    return logId;
   },
 });
 
@@ -98,6 +117,18 @@ export const verify = mutation({
       verifiedByParent: true,
       verifiedBy: user._id,
     });
+
+    await alertStudent(ctx, {
+      studentId: log.studentId,
+      type: "log_verified",
+      title: "Log verified",
+      body: `A parent verified your ${log.durationMinutes}-minute learning log.`,
+      href: "/student/dashboard",
+      createdBy: user._id,
+      sourceTable: "logs",
+      sourceId: args.logId,
+    });
+
     return null;
   },
 });

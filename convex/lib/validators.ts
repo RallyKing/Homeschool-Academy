@@ -108,3 +108,72 @@ export const courseDocValidator = v.object({
   externalSourceName: v.optional(v.string()),
   createdAt: v.number(),
 });
+
+export const alertTypeValidator = v.union(
+  v.literal("schedule_revision_requested"),
+  v.literal("log_created"),
+  v.literal("log_verified"),
+  v.literal("schedule_approved"),
+  v.literal("schedule_item_added"),
+  v.literal("course_assigned"),
+  v.literal("assignment_new"),
+  v.literal("general"),
+);
+
+export const alertRecipientTypeValidator = v.union(
+  v.literal("user"),
+  v.literal("family"),
+  v.literal("student"),
+);
+
+export const alertDocValidator = v.object({
+  _id: v.id("alerts"),
+  _creationTime: v.number(),
+  recipientType: alertRecipientTypeValidator,
+  recipientUserId: v.optional(v.id("users")),
+  familyId: v.optional(v.id("families")),
+  studentId: v.optional(v.id("students")),
+  type: alertTypeValidator,
+  title: v.string(),
+  body: v.string(),
+  href: v.optional(v.string()),
+  readAt: v.optional(v.number()),
+  createdAt: v.number(),
+  createdBy: v.optional(v.id("users")),
+  sourceTable: v.optional(v.string()),
+  sourceId: v.optional(v.string()),
+});
+
+export const publishStatusValidator = v.union(
+  v.literal("draft"),
+  v.literal("published"),
+);
+
+export const productUpdateDocValidator = v.object({
+  _id: v.id("productUpdates"),
+  _creationTime: v.number(),
+  title: v.string(),
+  summary: v.string(),
+  body: v.string(),
+  version: v.optional(v.string()),
+  status: publishStatusValidator,
+  knowledgeBaseArticleId: v.optional(v.id("knowledgeBaseArticles")),
+  createdBy: v.id("users"),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+  publishedAt: v.optional(v.number()),
+});
+
+export const knowledgeBaseArticleDocValidator = v.object({
+  _id: v.id("knowledgeBaseArticles"),
+  _creationTime: v.number(),
+  title: v.string(),
+  slug: v.string(),
+  body: v.string(),
+  category: v.optional(v.string()),
+  productUpdateId: v.optional(v.id("productUpdates")),
+  status: publishStatusValidator,
+  createdBy: v.id("users"),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+});

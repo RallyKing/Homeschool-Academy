@@ -1,6 +1,7 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { deleteAlertsForFamily, deleteAlertsForStudent } from "./alerts";
 
 type Ctx = QueryCtx | MutationCtx;
 
@@ -328,6 +329,8 @@ export async function deleteStudentData(
   ctx: MutationCtx,
   studentId: Id<"students">,
 ): Promise<void> {
+  await deleteAlertsForStudent(ctx, studentId);
+
   const logs = await ctx.db
     .query("logs")
     .withIndex("by_student", (q) => q.eq("studentId", studentId))
@@ -367,6 +370,8 @@ export async function deleteFamilyCascade(
   for (const student of students) {
     await deleteStudentData(ctx, student._id);
   }
+
+  await deleteAlertsForFamily(ctx, familyId);
 
   const courses = await ctx.db
     .query("courses")

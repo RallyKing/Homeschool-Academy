@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { alertStudent, alertFamily } from "./lib/alerts";
 import {
   deleteScheduleItems,
   requireStudentFamilyAccess,
@@ -193,6 +194,21 @@ export const approve = mutation({
       status: "approved",
       updatedAt: Date.now(),
     });
+
+    const student = await ctx.db.get("students", schedule.studentId);
+    if (student) {
+      await alertStudent(ctx, {
+        studentId: student._id,
+        type: "schedule_approved",
+        title: "Schedule approved",
+        body: `Your schedule for the week of ${schedule.weekStart} was approved.`,
+        href: "/student/dashboard",
+        createdBy: user._id,
+        sourceTable: "schedules",
+        sourceId: args.scheduleId,
+      });
+    }
+
     return null;
   },
 });
@@ -208,7 +224,10 @@ export const requestRevision = mutation({
     if (!schedule) {
       throw new Error("Schedule not found");
     }
-    await requireStudentFamilyAccess(ctx, schedule.studentId);
+    const { user, student } = await requireStudentFamilyAccess(
+      ctx,
+      schedule.studentId,
+    );
 
     if (schedule.status !== "approved" && schedule.status !== "pending_approval") {
       throw new Error("Only approved or pending schedules can request revision");
@@ -218,6 +237,22 @@ export const requestRevision = mutation({
       status: "draft",
       updatedAt: Date.now(),
     });
+
+    const noteSuffix = args.note?.trim()
+      ? ` Note: ${args.note.trim()}`
+      : "";
+    await alertFamily(ctx, {
+      familyId: student.familyId,
+      studentId: student._id,
+      type: "schedule_revision_requested",
+      title: "Schedule revision requested",
+      body: `${student.displayName} requested a schedule revision for the week of ${schedule.weekStart}.${noteSuffix}`,
+      href: "/family/planner",
+      createdBy: user._id,
+      sourceTable: "schedules",
+      sourceId: args.scheduleId,
+    });
+
     return null;
   },
 });
@@ -253,7 +288,7 @@ export const addItem = mutation({
       throw new Error("Planned minutes must be greater than 0");
     }
 
-    return await ctx.db.insert("scheduleItems", {
+    const itemId = await ctx.db.insert("scheduleItems", {
       scheduleId: args.scheduleId,
       title,
       plannedMinutes: args.plannedMinutes,
@@ -262,6 +297,19 @@ export const addItem = mutation({
       date: args.date,
       createdAt: Date.now(),
     });
+
+    await alertStudent(ctx, {
+      studentId: schedule.studentId,
+      type: "schedule_item_added",
+      title: "New schedule item",
+      body: `“${title}” (${args.plannedMinutes} min) was added to your plan for the week of ${schedule.weekStart}.`,
+      href: "/student/dashboard",
+      createdBy: user._id,
+      sourceTable: "scheduleItems",
+      sourceId: itemId,
+    });
+
+    return itemId;
   },
 });
 

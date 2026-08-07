@@ -221,4 +221,71 @@ export default defineSchema({
     .index("by_course", ["courseId"])
     .index("by_subject", ["subjectId"])
     .index("by_createdBy", ["createdBy"]),
+
+  alerts: defineTable({
+    recipientType: v.union(
+      v.literal("user"),
+      v.literal("family"),
+      v.literal("student"),
+    ),
+    recipientUserId: v.optional(v.id("users")),
+    familyId: v.optional(v.id("families")),
+    studentId: v.optional(v.id("students")),
+    type: v.union(
+      v.literal("schedule_revision_requested"),
+      v.literal("log_created"),
+      v.literal("log_verified"),
+      v.literal("schedule_approved"),
+      v.literal("schedule_item_added"),
+      v.literal("course_assigned"),
+      v.literal("assignment_new"),
+      v.literal("general"),
+    ),
+    title: v.string(),
+    body: v.string(),
+    href: v.optional(v.string()),
+    readAt: v.optional(v.number()),
+    createdAt: v.number(),
+    createdBy: v.optional(v.id("users")),
+    sourceTable: v.optional(v.string()),
+    sourceId: v.optional(v.string()),
+  })
+    .index("by_user", ["recipientUserId"])
+    .index("by_family", ["familyId"])
+    .index("by_student", ["studentId"])
+    .index("by_user_and_createdAt", ["recipientUserId", "createdAt"])
+    .index("by_family_and_createdAt", ["familyId", "createdAt"])
+    .index("by_student_and_createdAt", ["studentId", "createdAt"]),
+
+  productUpdates: defineTable({
+    title: v.string(),
+    summary: v.string(),
+    body: v.string(),
+    version: v.optional(v.string()),
+    status: v.union(v.literal("draft"), v.literal("published")),
+    knowledgeBaseArticleId: v.optional(v.id("knowledgeBaseArticles")),
+    createdBy: v.id("users"),
+    createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
+    publishedAt: v.optional(v.number()),
+  })
+    .index("by_status", ["status"])
+    .index("by_publishedAt", ["publishedAt"])
+    .index("by_createdBy", ["createdBy"]),
+
+  knowledgeBaseArticles: defineTable({
+    title: v.string(),
+    slug: v.string(),
+    body: v.string(),
+    category: v.optional(v.string()),
+    productUpdateId: v.optional(v.id("productUpdates")),
+    status: v.union(v.literal("draft"), v.literal("published")),
+    createdBy: v.id("users"),
+    createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
+  })
+    .index("by_slug", ["slug"])
+    .index("by_status", ["status"])
+    .index("by_category", ["category"])
+    .index("by_productUpdate", ["productUpdateId"]),
 });
