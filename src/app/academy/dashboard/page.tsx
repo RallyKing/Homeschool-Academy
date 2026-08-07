@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, Suspense, useEffect, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import { api } from "../../../../convex/_generated/api";
@@ -19,7 +19,10 @@ import {
   Message,
   Row,
   Col,
+  Tabs,
+  TabPanel,
 } from "@/components/ui";
+import { usePageTab } from "@/hooks/usePageTab";
 
 type EditTarget =
   | { kind: "course"; id: Id<"courses">; title: string }
@@ -27,7 +30,10 @@ type EditTarget =
   | { kind: "lesson"; id: Id<"lessons">; title: string }
   | null;
 
-export default function AcademyDashboardPage() {
+const ACADEMY_TABS = ["academies", "courses", "subscribers"] as const;
+
+function AcademyDashboardInner() {
+  const [tab, setTab] = usePageTab(ACADEMY_TABS, "academies");
   const user = useQuery(api.users.current);
   const status = useQuery(api.users.onboardingStatus);
   const academies = useQuery(api.academies.myAcademies);
@@ -197,8 +203,9 @@ export default function AcademyDashboardPage() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="page-stack">
       <PageHeader
+        compact
         eyebrow="Academy"
         title="Dashboard"
         description="Publish courses and see which families have subscribed."
@@ -211,6 +218,17 @@ export default function AcademyDashboardPage() {
 
       <Message tone={messageTone}>{message}</Message>
 
+      <Tabs
+        tabs={[
+          { id: "academies", label: "Academies", count: academies?.length },
+          { id: "courses", label: "Courses", count: courses?.length },
+          { id: "subscribers", label: "Subscribers", count: subscribers?.length },
+        ]}
+        value={tab}
+        onChange={setTab}
+      />
+
+      <TabPanel id="academies" active={tab === "academies"}>
       <Section title="My academies" description="Select an academy to manage courses.">
         {academies === undefined ? (
           <p className="text-sm text-[var(--muted)]">Loading…</p>
@@ -234,7 +252,7 @@ export default function AcademyDashboardPage() {
                 className={`list-row w-full text-left ${
                   academyId === a._id ? "ring-2 ring-[var(--accent-soft)]" : ""
                 }`}
-                onClick={() => setSelectedAcademy(a._id)}
+                onClick={() => { setSelectedAcademy(a._id); setTab("courses"); }}
               >
                 <div className="min-w-0">
                   <p className="font-medium text-[var(--foreground)]">{a.name}</p>
@@ -298,7 +316,18 @@ export default function AcademyDashboardPage() {
               )}
             </Card>
           </Section>
+        </>
+      )}
+      {(!academyId || !selectedAcademyDoc) && (
+        <EmptyState>Select or create an academy above.</EmptyState>
+      )}
+      </TabPanel>
 
+      <TabPanel id="courses" active={tab === "courses"}>
+      {!academyId ? (
+        <EmptyState>Select an academy in the Academies tab first.</EmptyState>
+      ) : (
+        <>
           <Section
             title="Courses"
             description="Native courses published under this academy."
@@ -536,15 +565,22 @@ export default function AcademyDashboardPage() {
             )}
           </Section>
 
+        </>
+      )}
+      </TabPanel>
+
+      <TabPanel id="subscribers" active={tab === "subscribers"}>
           <Section title="Subscribed families">
-            {subscribers === undefined ? (
+            {!academyId ? (
+              <EmptyState>Select an academy first.</EmptyState>
+            ) : subscribers === undefined ? (
               <p className="text-sm text-[var(--muted)]">Loading…</p>
             ) : subscribers.length === 0 ? (
               <EmptyState>No subscribers yet.</EmptyState>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 {subscribers.map((s) => (
-                  <div key={s.subscriptionId} className="list-row">
+                  <div key={s.subscriptionId} className="list-row list-row-dense">
                     <span className="font-medium">{s.familyName}</span>
                     <Badge tone={s.status === "active" ? "success" : "neutral"}>
                       {s.status}
@@ -554,8 +590,7 @@ export default function AcademyDashboardPage() {
               </div>
             )}
           </Section>
-        </>
-      )}
+      </TabPanel>
 
       <Modal
         open={academyModalOpen}
@@ -673,5 +708,13 @@ export default function AcademyDashboardPage() {
         </form>
       </Modal>
     </div>
+  );
+}
+
+export default function AcademyDashboardPage() {
+  return (
+    <Suspense fallback={<p className="text-sm text-[var(--muted)]">Loading…</p>}>
+      <AcademyDashboardInner />
+    </Suspense>
   );
 }
