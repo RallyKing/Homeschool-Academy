@@ -7,6 +7,7 @@ import {
   deleteRewardsForFamily,
 } from "./gamificationCore";
 import { deleteBadgeProposalsForStudent } from "./aiCore";
+import { deleteFeedForFamily, deleteFeedForStudent } from "./feed";
 import { deleteSocialForStudent } from "./socialCore";
 
 type Ctx = QueryCtx | MutationCtx;
@@ -341,6 +342,9 @@ export async function deleteStudentData(
   await deleteBadgeProposalsForStudent(ctx, studentId);
 
   const student = await ctx.db.get("students", studentId);
+  if (student) {
+    await deleteFeedForStudent(ctx, studentId, student.familyId);
+  }
 
   const logs = await ctx.db
     .query("logs")
@@ -388,6 +392,7 @@ export async function deleteFamilyCascade(
 
   await deleteAlertsForFamily(ctx, familyId);
   await deleteRewardsForFamily(ctx, familyId);
+  await deleteFeedForFamily(ctx, familyId);
 
   const courses = await ctx.db
     .query("courses")

@@ -48,7 +48,7 @@ const navByRole: Record<string, NavEntry[]> = {
         label: "Life",
         items: [
           { href: "/family/chores", label: "Chores" },
-          { href: "/family/cheers", label: "Family cheers" },
+          { href: "/family/cheers", label: "Family wall" },
           { href: "/alerts", label: "Alerts" },
         ],
       },
@@ -78,7 +78,7 @@ const navByRole: Record<string, NavEntry[]> = {
         label: "Life",
         items: [
           { href: "/family/chores", label: "Chores & rewards" },
-          { href: "/family/cheers", label: "Family cheers" },
+          { href: "/family/cheers", label: "Family wall" },
           { href: "/alerts", label: "Alerts" },
           { href: "/family/academies", label: "Academies" },
         ],

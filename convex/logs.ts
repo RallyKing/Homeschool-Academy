@@ -3,6 +3,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
 import { alertFamily, alertStudent } from "./lib/alerts";
 import { getCurrentUser, requireStudentFamilyAccess } from "./lib/auth";
+import { createFeedPost } from "./lib/feed";
 import { entryTypeValidator, logDocValidator } from "./lib/validators";
 import {
   awardProgress,
@@ -96,6 +97,27 @@ export const create = mutation({
       createdBy: user._id,
       sourceTable: "logs",
       sourceId: logId,
+    });
+
+    let activityLabel = args.entryType.replaceAll("_", " ");
+    if (resolvedSubjectId) {
+      const subject = await ctx.db.get("subjects", resolvedSubjectId);
+      if (subject) activityLabel = subject.name;
+    } else if (args.courseId) {
+      const course = await ctx.db.get("courses", args.courseId);
+      if (course) activityLabel = course.title;
+    }
+
+    await createFeedPost(ctx, {
+      familyId: student.familyId,
+      type: "log_completed",
+      actorStudentId: student._id,
+      title: `${student.displayName} logged ${args.durationMinutes} min of ${activityLabel}`,
+      body: args.notes?.trim() || undefined,
+      href: `/family/students/${student._id}?tab=logs`,
+      sourceTable: "logs",
+      sourceId: logId,
+      createdByUserId: user._id,
     });
 
     const today = args.today ?? new Date().toISOString().slice(0, 10);

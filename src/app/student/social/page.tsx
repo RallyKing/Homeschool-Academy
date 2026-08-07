@@ -12,6 +12,7 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { StudentAvatar } from "@/components/StudentAvatar";
+import { FamilyWallFeed } from "@/components/FamilyWallFeed";
 import { useViewAsStudentId } from "@/hooks/useViewAsStudentId";
 import { withViewAs } from "@/lib/viewAs";
 import { usePageTab } from "@/hooks/usePageTab";
@@ -29,7 +30,7 @@ import {
 } from "@/components/ui";
 import { cn } from "@/lib/cn";
 
-const CHEER_TABS = ["inbox", "send", "stickers", "customize"] as const;
+const CHEER_TABS = ["wall", "inbox", "send", "stickers", "customize"] as const;
 
 type CheerKind = "encourage" | "motivate" | "congratulate" | "sticker";
 
@@ -65,7 +66,7 @@ function kindTone(kind: CheerKind): "success" | "neutral" | "warning" {
 
 function StudentSocialInner() {
   const viewAsStudentId = useViewAsStudentId();
-  const [tab, setTab] = usePageTab(CHEER_TABS, "inbox");
+  const [tab, setTab] = usePageTab(CHEER_TABS, "wall");
   const week = useMemo(() => weekStartToday(), []);
 
   const myProfile = useQuery(
@@ -80,6 +81,8 @@ function StudentSocialInner() {
   const profile = viewAsStudentId
     ? (viewAsContext?.student ?? null)
     : (myProfile ?? null);
+
+  const family = useQuery(api.users.myFamily);
 
   const siblings = useQuery(
     api.social.listSiblings,
@@ -115,6 +118,7 @@ function StudentSocialInner() {
   const [kind, setKind] = useState<CheerKind>("encourage");
   const [body, setBody] = useState("");
   const [stickerKey, setStickerKey] = useState("");
+  const [publicToFeed, setPublicToFeed] = useState(true);
   const [editId, setEditId] = useState<Id<"socialMessages"> | null>(null);
   const [editBody, setEditBody] = useState("");
   const [message, setMessage] = useState<string | null>(null);
@@ -138,6 +142,13 @@ function StudentSocialInner() {
       // profile will create on first send
     });
   }, [profile, ensureProfile]);
+
+  useEffect(() => {
+    // Stickers & encourage default to wall; motivate stays private unless opted in.
+    setPublicToFeed(
+      kind === "sticker" || kind === "encourage" || kind === "congratulate",
+    );
+  }, [kind]);
 
   function notify(text: string, tone: "info" | "error" | "success" = "success") {
     setMessage(text);
@@ -171,19 +182,23 @@ function StudentSocialInner() {
         kind,
         body: body.trim() || undefined,
         stickerKey: stickerKey || undefined,
+        publicToFeed,
         today: week.today,
         weekStart: week.weekStart,
       });
       setBody("");
       setStickerKey("");
       setActiveThreadId(result.threadId);
-      setTab("inbox");
+      setTab(publicToFeed ? "wall" : "inbox");
       const unlockNote =
         result.newUnlocks.length > 0
           ? ` Unlocked: ${result.newUnlocks.length} new item(s)!`
           : "";
+      const wallNote = result.feedPostId
+        ? " Celebrated on the family wall."
+        : "";
       notify(
-        `Cheer sent · +${result.xpGained} XP · +${result.pointsGained} pts.${unlockNote}`,
+        `Cheer sent · +${result.xpGained} XP · +${result.pointsGained} pts.${unlockNote}${wallNote}`,
         "success",
       );
     } catch (err) {
@@ -288,6 +303,7 @@ function StudentSocialInner() {
 
       <Tabs
         tabs={[
+          { id: "wall", label: "Wall" },
           { id: "inbox", label: "Inbox" },
           { id: "send", label: "Send kudos" },
           { id: "stickers", label: "Stickers" },
@@ -296,6 +312,18 @@ function StudentSocialInner() {
         value={tab}
         onChange={setTab}
       />
+
+      <TabPanel id="wall" active={tab === "wall"}>
+        {profile.familyId || family?._id ? (
+          <FamilyWallFeed
+            familyId={(family?._id ?? profile.familyId) as Id<"families">}
+            viewerStudentId={profile._id}
+            canCompose
+          />
+        ) : (
+          <EmptyState>Family wall will appear once your family is linked.</EmptyState>
+        )}
+      </TabPanel>
 
       <TabPanel id="inbox" active={tab === "inbox"}>
         <div className="cheer-inbox">
@@ -616,6 +644,22 @@ function StudentSocialInner() {
                   </div>
                 )}
               </div>
+
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={publicToFeed}
+                  onChange={(e) => setPublicToFeed(e.target.checked)}
+                />
+                <span>
+                  Celebrate on the family wall
+                  <span className="block text-xs text-[var(--muted)]">
+                    Family-only. Uncheck to keep this cheer in your private
+                    sibling thread.
+                  </span>
+                </span>
+              </label>
 
               <Button type="submit" disabled={busy || !toStudentId}>
                 Send cheer

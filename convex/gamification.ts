@@ -9,6 +9,7 @@ import {
   requireRole,
   requireStudentFamilyAccess,
 } from "./lib/auth";
+import { createFeedPost } from "./lib/feed";
 import {
   awardProgress,
   ensureDailyQuests,
@@ -759,6 +760,19 @@ export const createAccolade = mutation({
       createdBy: user._id,
       sourceTable: "accolades",
       sourceId: id,
+    });
+
+    await createFeedPost(ctx, {
+      familyId: student.familyId,
+      type: "accolade",
+      actorStudentId: student._id,
+      targetStudentId: student._id,
+      title: `${student.displayName} earned an accolade: ${title}`,
+      body: args.message?.trim() || undefined,
+      href: "/student/dashboard",
+      sourceTable: "accolades",
+      sourceId: id,
+      createdByUserId: user._id,
     });
 
     return id;

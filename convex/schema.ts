@@ -76,6 +76,12 @@ export default defineSchema({
     name: v.string(),
     createdBy: v.id("users"),
     createdAt: v.number(),
+    /** Parent AI guardrail text used across family AI tools. */
+    parentGuardrailContext: v.optional(v.string()),
+    /** Platform subjects soft-hidden from this family's pickers. */
+    hiddenSubjectIds: v.optional(v.array(v.id("subjects"))),
+    /** Default whether student kudos/stickers post to the family feed. */
+    defaultPublicCheer: v.optional(v.boolean()),
   })
     .index("by_createdBy", ["createdBy"])
     .index("by_name", ["name"]),
@@ -117,6 +123,11 @@ export default defineSchema({
     academicLevel: v.optional(v.string()),
     imageStorageId: v.optional(v.id("_storage")),
     createdAt: v.number(),
+    /** When set, overrides family default for posting cheers to the feed. */
+    defaultPublicCheer: v.optional(v.boolean()),
+    notifyKudos: v.optional(v.boolean()),
+    notifyChores: v.optional(v.boolean()),
+    notifyQuests: v.optional(v.boolean()),
   })
     .index("by_family", ["familyId"])
     .index("by_user", ["userId"])
@@ -138,9 +149,12 @@ export default defineSchema({
     name: v.string(),
     category: subjectCategoryValidator,
     createdAt: v.number(),
+    /** null/undefined = platform seed; set = family-owned custom subject. */
+    familyId: v.optional(v.id("families")),
   })
     .index("by_category", ["category"])
-    .index("by_name", ["name"]),
+    .index("by_name", ["name"])
+    .index("by_family", ["familyId"]),
 
   courses: defineTable({
     type: courseTypeValidator,
@@ -615,4 +629,43 @@ export default defineSchema({
     unlockedPackIds: v.array(v.string()),
     updatedAt: v.number(),
   }).index("by_student", ["studentId"]),
+
+  /** Per-user notification / account preferences. */
+  userSettings: defineTable({
+    userId: v.id("users"),
+    notifyAlerts: v.optional(v.boolean()),
+    notifyChores: v.optional(v.boolean()),
+    notifyKudos: v.optional(v.boolean()),
+    notifyAi: v.optional(v.boolean()),
+    updatedAt: v.number(),
+  }).index("by_user", ["userId"]),
+
+  // ── Family Cheer Wall (family-scoped feed — non-competitive) ──
+  feedPosts: defineTable({
+    familyId: v.id("families"),
+    type: v.union(
+      v.literal("kudos"),
+      v.literal("sticker"),
+      v.literal("log_completed"),
+      v.literal("chore_done"),
+      v.literal("badge_earned"),
+      v.literal("level_up"),
+      v.literal("accolade"),
+      v.literal("general"),
+    ),
+    actorStudentId: v.optional(v.id("students")),
+    targetStudentId: v.optional(v.id("students")),
+    title: v.string(),
+    body: v.optional(v.string()),
+    stickerKey: v.optional(v.string()),
+    href: v.optional(v.string()),
+    sourceTable: v.optional(v.string()),
+    sourceId: v.optional(v.string()),
+    visibility: v.literal("family"),
+    createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
+    createdByUserId: v.optional(v.id("users")),
+  })
+    .index("by_family", ["familyId"])
+    .index("by_family_and_createdAt", ["familyId", "createdAt"]),
 });

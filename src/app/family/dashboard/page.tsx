@@ -34,7 +34,7 @@ const QUICK_LINKS = [
   { href: "/family/ledger", label: "Ledger" },
   { href: "/family/progress", label: "Progress" },
   { href: "/family/chores", label: "Chores" },
-  { href: "/family/cheers", label: "Cheers" },
+  { href: "/family/cheers", label: "Family wall" },
   { href: "/family/ai", label: "AI" },
 ] as const;
 

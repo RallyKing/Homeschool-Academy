@@ -5,6 +5,7 @@ import {
   requireFamilyAccess,
   requireStudentFamilyAccess,
 } from "./lib/auth";
+import { createFeedPost } from "./lib/feed";
 import {
   awardProgress,
   rewardsForChore,
@@ -367,6 +368,18 @@ export const markDone = mutation({
       createdBy: user._id,
       sourceTable: "chores",
       sourceId: args.choreId,
+    });
+
+    await createFeedPost(ctx, {
+      familyId: chore.familyId,
+      type: "chore_done",
+      actorStudentId: chore.studentId,
+      title: `${student.displayName} finished chore: ${chore.title}`,
+      body: chore.description,
+      href: "/family/chores",
+      sourceTable: "chores",
+      sourceId: args.choreId,
+      createdByUserId: user._id,
     });
 
     return {

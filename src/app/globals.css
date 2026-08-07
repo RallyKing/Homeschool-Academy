@@ -497,3 +497,26 @@ html {
   animation: cheer-celebrate 0.8s ease;
 }
 
+/* ── Family Cheer Wall ── */
+.family-wall-item {
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--accent-soft) 55%, transparent),
+    transparent 72%
+  );
+  padding: 0.85rem 1rem;
+}
+
+.family-wall-avatar-fallback {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.85rem;
+}
+

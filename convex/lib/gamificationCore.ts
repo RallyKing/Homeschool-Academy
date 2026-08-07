@@ -1,5 +1,6 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
+import { createFeedPost } from "./feed";
 
 /** XP is permanent progression. Points are spendable. Stars are prestige. */
 export const XP_PER_LEVEL = 100;
@@ -538,11 +539,41 @@ export async function awardProgress(
     });
   }
 
+  const leveledUp = level > previousLevel;
+  if (leveledUp || awardedBadgeSummaries.length > 0) {
+    const student = await ctx.db.get("students", args.studentId);
+    const name = student?.displayName ?? "A student";
+    if (leveledUp) {
+      await createFeedPost(ctx, {
+        familyId: args.familyId,
+        type: "level_up",
+        actorStudentId: args.studentId,
+        title: `${name} reached level ${level} — ${levelTitle(level)}!`,
+        body: "Celebrating steady progress — keep going.",
+        href: "/student/dashboard",
+        sourceTable: "studentGamification",
+        sourceId: `${args.studentId}:level:${level}`,
+      });
+    }
+    for (const badge of awardedBadgeSummaries) {
+      await createFeedPost(ctx, {
+        familyId: args.familyId,
+        type: "badge_earned",
+        actorStudentId: args.studentId,
+        title: `${name} earned a badge: ${badge.title}`,
+        body: "A new badge to celebrate!",
+        href: "/student/dashboard",
+        sourceTable: "studentBadges",
+        sourceId: badge._id,
+      });
+    }
+  }
+
   return {
     xpGained: xpGain,
     pointsGained: pointsGain,
     starsGained: starsGain,
-    leveledUp: level > previousLevel,
+    leveledUp,
     previousLevel,
     newLevel: level,
     levelTitle: levelTitle(level),

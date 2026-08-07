@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
+import { FamilyWallFeed } from "@/components/FamilyWallFeed";
+import { usePageTab } from "@/hooks/usePageTab";
 import {
   Badge,
   Button,
@@ -12,7 +14,11 @@ import {
   Message,
   PageHeader,
   Section,
+  Tabs,
+  TabPanel,
 } from "@/components/ui";
+
+const CHEERS_TABS = ["wall", "moderate"] as const;
 
 function formatWhen(ms: number): string {
   try {
@@ -28,10 +34,13 @@ function formatWhen(ms: number): string {
 }
 
 function FamilyCheersInner() {
+  const [tab, setTab] = usePageTab(CHEERS_TABS, "wall");
   const family = useQuery(api.users.myFamily);
   const cheers = useQuery(
     api.social.listFamilyCheers,
-    family ? { familyId: family._id, limit: 50 } : "skip",
+    family && tab === "moderate"
+      ? { familyId: family._id, limit: 50 }
+      : "skip",
   );
   const moderateDelete = useMutation(api.social.moderateDeleteMessage);
   const seedCatalog = useMutation(api.social.seedCatalog);
@@ -56,8 +65,8 @@ function FamilyCheersInner() {
         <PageHeader
           compact
           eyebrow="Family"
-          title="Family cheers"
-          description="Create a family first to see sibling encouragement."
+          title="Family wall"
+          description="Create a family first to see celebrations and cheers."
         />
         <Link href="/family/dashboard">
           <Button variant="secondary">Family home</Button>
@@ -71,8 +80,8 @@ function FamilyCheersInner() {
       <PageHeader
         compact
         eyebrow="Safety & warmth"
-        title="Family cheers"
-        description="Read-only feed of sibling encouragement. Moderate if needed — this space is not competitive."
+        title="Family wall"
+        description="Celebrate finished work and sibling cheers together. Family-only — not rankings, not public."
         actions={
           <div className="flex flex-wrap gap-2">
             <Button
@@ -107,60 +116,82 @@ function FamilyCheersInner() {
 
       <Message tone={messageTone}>{message}</Message>
 
-      <Section title="Recent cheers">
-        {!cheers ? (
-          <p className="text-sm text-[var(--muted)]">Loading…</p>
-        ) : cheers.length === 0 ? (
-          <EmptyState>
-            No cheers yet. Students send them from Cheer Hub.
-          </EmptyState>
-        ) : (
-          <ul className="space-y-2">
-            {cheers.map(({ message: m, fromName, toName, stickerEmoji }) => (
-              <li key={m._id} className="list-row">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium">
-                    {fromName} → {toName}{" "}
-                    <Badge tone="neutral">{m.kind}</Badge>
-                  </p>
-                  <p className="mt-0.5 text-sm text-[var(--muted)]">
-                    {stickerEmoji ? `${stickerEmoji} ` : ""}
-                    {m.body ?? "Sticker cheer"}
-                  </p>
-                  <p className="text-xs text-[var(--muted-fg)]">
-                    {formatWhen(m.createdAt)}
-                  </p>
-                </div>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => {
-                    if (
-                      !window.confirm(
-                        "Remove this cheer from the family feed?",
-                      )
-                    ) {
-                      return;
-                    }
-                    void moderateDelete({
-                      messageId: m._id as Id<"socialMessages">,
-                    })
-                      .then(() => notify("Cheer removed.", "info"))
-                      .catch((err) =>
-                        notify(
-                          err instanceof Error ? err.message : "Failed",
-                          "error",
-                        ),
-                      );
-                  }}
-                >
-                  Moderate
-                </Button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Section>
+      <Tabs
+        tabs={[
+          { id: "wall", label: "Wall" },
+          { id: "moderate", label: "Moderate" },
+        ]}
+        value={tab}
+        onChange={setTab}
+      />
+
+      <TabPanel id="wall" active={tab === "wall"}>
+        <FamilyWallFeed
+          familyId={family._id}
+          canModerate
+          canCompose
+        />
+      </TabPanel>
+
+      <TabPanel id="moderate" active={tab === "moderate"}>
+        <Section
+          title="Direct cheers"
+          description="Private sibling messages. Remove if needed — the wall is separate."
+        >
+          {!cheers ? (
+            <p className="text-sm text-[var(--muted)]">Loading…</p>
+          ) : cheers.length === 0 ? (
+            <EmptyState>
+              No direct cheers yet. Students send them from Cheer Hub.
+            </EmptyState>
+          ) : (
+            <ul className="space-y-2">
+              {cheers.map(({ message: m, fromName, toName, stickerEmoji }) => (
+                <li key={m._id} className="list-row">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">
+                      {fromName} → {toName}{" "}
+                      <Badge tone="neutral">{m.kind}</Badge>
+                    </p>
+                    <p className="mt-0.5 text-sm text-[var(--muted)]">
+                      {stickerEmoji ? `${stickerEmoji} ` : ""}
+                      {m.body ?? "Sticker cheer"}
+                    </p>
+                    <p className="text-xs text-[var(--muted-fg)]">
+                      {formatWhen(m.createdAt)}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      if (
+                        !window.confirm(
+                          "Remove this cheer from sibling messages?",
+                        )
+                      ) {
+                        return;
+                      }
+                      void moderateDelete({
+                        messageId: m._id as Id<"socialMessages">,
+                      })
+                        .then(() => notify("Cheer removed.", "info"))
+                        .catch((err) =>
+                          notify(
+                            err instanceof Error ? err.message : "Failed",
+                            "error",
+                          ),
+                        );
+                    }}
+                  >
+                    Moderate
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Section>
+      </TabPanel>
     </div>
   );
 }

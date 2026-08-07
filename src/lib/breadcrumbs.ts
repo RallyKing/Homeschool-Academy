@@ -221,7 +221,15 @@ const ROUTES: RouteRule[] = [
     build: (ctx) => [
       homeCrumb(ctx.role),
       { label: "Life", href: "/family/chores" },
-      { label: "Family cheers" },
+      { label: "Family wall" },
+    ],
+  },
+  {
+    test: exact("/family/feed"),
+    build: (ctx) => [
+      homeCrumb(ctx.role),
+      { label: "Life", href: "/family/chores" },
+      { label: "Family wall", href: "/family/cheers?tab=wall" },
     ],
   },
   {

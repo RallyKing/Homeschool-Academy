@@ -13,6 +13,7 @@ import {
   getFamilyMembership,
   requireStudentFamilyAccess,
 } from "./lib/auth";
+import { createFeedPost } from "./lib/feed";
 import { awardProgress } from "./lib/gamificationCore";
 import {
   BUBBLE_OPTIONS,
@@ -347,6 +348,8 @@ export const sendKudos = mutation({
     kind: messageKindValidator,
     body: v.optional(v.string()),
     stickerKey: v.optional(v.string()),
+    /** Celebrate on the family wall. Defaults true for stickers & encourage. */
+    publicToFeed: v.optional(v.boolean()),
     today: v.string(),
     weekStart: v.optional(v.string()),
   },
@@ -356,6 +359,7 @@ export const sendKudos = mutation({
     newUnlocks: v.array(v.string()),
     xpGained: v.number(),
     pointsGained: v.number(),
+    feedPostId: v.union(v.id("feedPosts"), v.null()),
   }),
   handler: async (ctx, args) => {
     const { user, student: from } = await assertActorIsStudent(
@@ -474,12 +478,39 @@ export const sendKudos = mutation({
       sourceId: messageId,
     });
 
+    const family = await ctx.db.get("families", from.familyId);
+    const prefDefault =
+      from.defaultPublicCheer ??
+      family?.defaultPublicCheer ??
+      (kind === "sticker" || kind === "encourage" || kind === "congratulate");
+    const publicToFeed = args.publicToFeed ?? prefDefault;
+    let feedPostId: Id<"feedPosts"> | null = null;
+    if (publicToFeed) {
+      const isStickerPost = Boolean(stickerKey) && (kind === "sticker" || !body);
+      feedPostId = await createFeedPost(ctx, {
+        familyId: from.familyId,
+        type: isStickerPost ? "sticker" : "kudos",
+        actorStudentId: args.fromStudentId,
+        targetStudentId: args.toStudentId,
+        title: isStickerPost
+          ? `${from.displayName} sent ${to.displayName} a sticker`
+          : `${from.displayName} cheered ${to.displayName}`,
+        body: body ?? (stickerKey ? undefined : `Shared ${kindLabel(kind)}`),
+        stickerKey,
+        href: "/student/social?tab=wall",
+        sourceTable: "socialMessages",
+        sourceId: messageId,
+        createdByUserId: user._id,
+      });
+    }
+
     return {
       messageId,
       threadId: thread._id,
       newUnlocks,
       xpGained: award.xpGained,
       pointsGained: award.pointsGained,
+      feedPostId,
     };
   },
 });

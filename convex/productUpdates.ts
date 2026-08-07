@@ -30,13 +30,35 @@ type FeatureSeed = {
 
 const FEATURE_SEEDS: FeatureSeed[] = [
   {
+    title: "Family Cheer Wall",
+    summary:
+      "A family-only wall that celebrates cheers, finished work, badges, and accolades — without rankings.",
+    body: `The Family Wall brings Encouragement Circle into a shared feed everyone at home can see.
+
+**Where to go**
+- Parents: Life → Family wall (\`/family/cheers\`, Wall tab) or \`/family/feed\`
+- Students: Life → Cheer → Wall (\`/student/social?tab=wall\`)
+
+**What shows up**
+- Public sibling cheers and stickers (opt-in when sending)
+- Learning logs and finished chores
+- Badges earned, level celebrations, and parent accolades
+
+**Privacy**
+- Family-only — never public internet, never competitive rankings
+- Keep cheers private by unchecking “Celebrate on the family wall”`,
+    version: "1.2.0",
+    slug: "family-cheer-wall",
+    category: "Family life",
+  },
+  {
     title: "Encouragement Circle & Cheer",
     summary:
       "Send cheers between family members and keep encouragement flowing in the Circle.",
     body: `Family Cheers lets parents and students celebrate wins together.
 
 **Where to go**
-- Parents: Account → Life → Family cheers (\`/family/cheers\`)
+- Parents: Account → Life → Family wall (\`/family/cheers\`)
 - Students: Life → Cheer (\`/student/social\`)
 
 **What you can do**
