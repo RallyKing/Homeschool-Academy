@@ -12,6 +12,7 @@ import { Container } from "@/components/ui";
 import { cn } from "@/lib/cn";
 
 const sharedLinks = [
+  { href: "/alerts", label: "Alerts" },
   { href: "/updates", label: "Updates" },
   { href: "/help", label: "Help" },
 ];

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Button } from "@/components/ui";
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -71,23 +72,19 @@ export function InstallAppButton() {
 
   if (deferred) {
     return (
-      <button
-        type="button"
-        onClick={() => void handleInstall()}
-        className="rounded-[var(--radius-sm)] px-2.5 py-1.5 text-sm font-medium text-[var(--muted)] transition-colors duration-200 hover:bg-[var(--accent-soft)] hover:text-[var(--accent)]"
-      >
+      <Button variant="ghost" size="sm" onClick={() => void handleInstall()}>
         Install app
-      </button>
+      </Button>
     );
   }
 
   if (showIosTip) {
     return (
-      <details className="relative px-2.5 py-1.5 text-sm font-medium text-[var(--muted)]">
-        <summary className="cursor-pointer list-none rounded-[var(--radius-sm)] hover:text-[var(--accent)]">
+      <details className="text-sm text-[var(--muted)]">
+        <summary className="cursor-pointer list-none rounded-[var(--radius-sm)] px-2.5 py-1.5 font-medium transition-colors hover:bg-[var(--accent-soft)] hover:text-[var(--accent)]">
           Install app
         </summary>
-        <p className="absolute right-0 top-full z-50 mt-1 w-48 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-2 text-xs font-normal text-[var(--muted-fg)] shadow-sm">
+        <p className="mt-1 max-w-48 px-2 text-xs text-[var(--muted-fg)]">
           Tap Share, then &quot;Add to Home Screen&quot;.
         </p>
       </details>
