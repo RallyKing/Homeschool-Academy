@@ -25,6 +25,28 @@ const accountGroup: NavGroup = {
   ],
 };
 
+function accountGroupFor(role: "parent" | "student" | "shared"): NavGroup {
+  if (role === "parent") {
+    return {
+      ...accountGroup,
+      items: [
+        { href: "/family/settings", label: "Settings" },
+        ...accountGroup.items,
+      ],
+    };
+  }
+  if (role === "student") {
+    return {
+      ...accountGroup,
+      items: [
+        { href: "/student/settings", label: "Settings" },
+        ...accountGroup.items,
+      ],
+    };
+  }
+  return accountGroup;
+}
+
 const navByRole: Record<string, NavEntry[]> = {
   superAdmin: [
     {
@@ -53,7 +75,7 @@ const navByRole: Record<string, NavEntry[]> = {
         ],
       },
     },
-    { kind: "group", group: accountGroup },
+    { kind: "group", group: accountGroupFor("shared") },
   ],
   parent: [
     { kind: "link", link: { href: "/family/dashboard", label: "Home" } },
@@ -81,10 +103,11 @@ const navByRole: Record<string, NavEntry[]> = {
           { href: "/family/cheers", label: "Family wall" },
           { href: "/alerts", label: "Alerts" },
           { href: "/family/academies", label: "Academies" },
+          { href: "/family/settings", label: "Settings" },
         ],
       },
     },
-    { kind: "group", group: accountGroup },
+    { kind: "group", group: accountGroupFor("parent") },
   ],
   teacher: [
     { kind: "link", link: { href: "/academy/dashboard", label: "Academy" } },
@@ -102,10 +125,11 @@ const navByRole: Record<string, NavEntry[]> = {
         items: [
           { href: "/student/social", label: "Cheer" },
           { href: "/alerts", label: "Alerts" },
+          { href: "/student/settings", label: "Settings" },
         ],
       },
     },
-    { kind: "group", group: accountGroup },
+    { kind: "group", group: accountGroupFor("student") },
   ],
 };
 

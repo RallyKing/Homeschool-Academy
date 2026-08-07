@@ -83,6 +83,10 @@ export const update = mutation({
     displayName: v.optional(v.string()),
     birthYear: v.optional(v.number()),
     academicLevel: v.optional(v.string()),
+    defaultPublicCheer: v.optional(v.boolean()),
+    notifyKudos: v.optional(v.boolean()),
+    notifyChores: v.optional(v.boolean()),
+    notifyQuests: v.optional(v.boolean()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -91,14 +95,30 @@ export const update = mutation({
       args.studentId,
     );
 
-    if (user.role !== "parent" && user.role !== "superAdmin") {
-      throw new Error("Only parents can edit student profiles");
+    const isLinkedStudent = student.userId === user._id;
+    const isParent = user.role === "parent" || user.role === "superAdmin";
+
+    if (!isParent && !isLinkedStudent) {
+      throw new Error("Unauthorized");
+    }
+
+    // Linked students may edit their own name + prefs; parents edit everything.
+    if (!isParent && isLinkedStudent) {
+      const tryingRestricted =
+        args.birthYear !== undefined || args.academicLevel !== undefined;
+      if (tryingRestricted) {
+        throw new Error("Only parents can edit academic level or birth year");
+      }
     }
 
     const patch: {
       displayName?: string;
       birthYear?: number;
       academicLevel?: string;
+      defaultPublicCheer?: boolean;
+      notifyKudos?: boolean;
+      notifyChores?: boolean;
+      notifyQuests?: boolean;
     } = {};
 
     if (args.displayName !== undefined) {
@@ -106,11 +126,23 @@ export const update = mutation({
       if (!name) throw new Error("Student name is required");
       patch.displayName = name;
     }
-    if (args.birthYear !== undefined) {
+    if (args.birthYear !== undefined && isParent) {
       patch.birthYear = args.birthYear;
     }
-    if (args.academicLevel !== undefined) {
+    if (args.academicLevel !== undefined && isParent) {
       patch.academicLevel = args.academicLevel.trim() || undefined;
+    }
+    if (args.defaultPublicCheer !== undefined) {
+      patch.defaultPublicCheer = args.defaultPublicCheer;
+    }
+    if (args.notifyKudos !== undefined) {
+      patch.notifyKudos = args.notifyKudos;
+    }
+    if (args.notifyChores !== undefined) {
+      patch.notifyChores = args.notifyChores;
+    }
+    if (args.notifyQuests !== undefined) {
+      patch.notifyQuests = args.notifyQuests;
     }
 
     await ctx.db.patch("students", student._id, patch);

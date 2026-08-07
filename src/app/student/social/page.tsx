@@ -118,7 +118,12 @@ function StudentSocialInner() {
   const [kind, setKind] = useState<CheerKind>("encourage");
   const [body, setBody] = useState("");
   const [stickerKey, setStickerKey] = useState("");
-  const [publicToFeed, setPublicToFeed] = useState(true);
+  const [publicToFeedOverride, setPublicToFeedOverride] = useState<
+    boolean | null
+  >(null);
+  const publicToFeed =
+    publicToFeedOverride ??
+    (kind === "sticker" || kind === "encourage" || kind === "congratulate");
   const [editId, setEditId] = useState<Id<"socialMessages"> | null>(null);
   const [editBody, setEditBody] = useState("");
   const [message, setMessage] = useState<string | null>(null);
@@ -142,13 +147,6 @@ function StudentSocialInner() {
       // profile will create on first send
     });
   }, [profile, ensureProfile]);
-
-  useEffect(() => {
-    // Stickers & encourage default to wall; motivate stays private unless opted in.
-    setPublicToFeed(
-      kind === "sticker" || kind === "encourage" || kind === "congratulate",
-    );
-  }, [kind]);
 
   function notify(text: string, tone: "info" | "error" | "success" = "success") {
     setMessage(text);
@@ -537,7 +535,10 @@ function StudentSocialInner() {
                         "cheer-kind-chip",
                         kind === k && "cheer-kind-chip-active",
                       )}
-                      onClick={() => setKind(k)}
+                      onClick={() => {
+                        setKind(k);
+                        setPublicToFeedOverride(null);
+                      }}
                     >
                       {k}
                     </button>
@@ -650,7 +651,7 @@ function StudentSocialInner() {
                   type="checkbox"
                   className="mt-1"
                   checked={publicToFeed}
-                  onChange={(e) => setPublicToFeed(e.target.checked)}
+                  onChange={(e) => setPublicToFeedOverride(e.target.checked)}
                 />
                 <span>
                   Celebrate on the family wall

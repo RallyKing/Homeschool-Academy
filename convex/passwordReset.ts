@@ -134,7 +134,7 @@ export const normalizeAccountEmail = internalMutation({
   returns: v.string(),
   handler: async (ctx, args) => {
     const normalized = args.email.trim().toLowerCase();
-    const account = await ctx.db.get(args.accountId);
+    const account = await ctx.db.get("authAccounts", args.accountId);
     if (!account || account.provider !== "password") {
       throw new Error("Password account not found");
     }
@@ -153,12 +153,14 @@ export const normalizeAccountEmail = internalMutation({
       if (existing && existing._id !== account._id) {
         throw new Error("Another account already uses this email");
       }
-      await ctx.db.patch(account._id, { providerAccountId: normalized });
+      await ctx.db.patch("authAccounts", account._id, {
+        providerAccountId: normalized,
+      });
     }
 
-    const user = await ctx.db.get(args.userId);
+    const user = await ctx.db.get("users", args.userId);
     if (user && user.email !== normalized) {
-      await ctx.db.patch(args.userId, { email: normalized });
+      await ctx.db.patch("users", args.userId, { email: normalized });
     }
 
     return normalized;

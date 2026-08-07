@@ -68,6 +68,26 @@ const FAMILY_DASH_TAB_LABELS: Record<string, string> = {
   household: "Household",
 };
 
+const FAMILY_SETTINGS_TAB_LABELS: Record<string, string> = {
+  household: "Household",
+  students: "Students",
+  subjects: "Subjects",
+  academies: "Academies",
+  rewards: "Rewards & shop",
+  notifications: "Notifications",
+  privacy: "Privacy & social",
+  ai: "AI & guardrails",
+  account: "Account",
+};
+
+const STUDENT_SETTINGS_TAB_LABELS: Record<string, string> = {
+  profile: "Profile",
+  customization: "Customization",
+  notifications: "Notifications",
+  privacy: "Privacy",
+  account: "Account",
+};
+
 const STUDENT_DASH_TAB_LABELS: Record<string, string> = {
   home: "Today",
   quests: "Quests",
@@ -240,6 +260,23 @@ const ROUTES: RouteRule[] = [
       { label: "Academies" },
     ],
   },
+  {
+    test: exact("/family/settings"),
+    build: (ctx) => {
+      const crumbs: BreadcrumbItem[] = [
+        homeCrumb(ctx.role),
+        { label: "Settings", href: "/family/settings" },
+      ];
+      if (ctx.tab && ctx.tab !== "household") {
+        crumbs.push({
+          label: FAMILY_SETTINGS_TAB_LABELS[ctx.tab] ?? titleCase(ctx.tab),
+        });
+      } else {
+        crumbs[crumbs.length - 1] = { label: "Settings" };
+      }
+      return crumbs;
+    },
+  },
 
   // ── Student ─────────────────────────────────────────────
   {
@@ -266,6 +303,23 @@ const ROUTES: RouteRule[] = [
       { label: "Life", href: "/student/social" },
       { label: "Cheer" },
     ],
+  },
+  {
+    test: exact("/student/settings"),
+    build: (ctx) => {
+      const crumbs: BreadcrumbItem[] = [
+        homeCrumb(ctx.role),
+        { label: "Settings", href: "/student/settings" },
+      ];
+      if (ctx.tab && ctx.tab !== "profile") {
+        crumbs.push({
+          label: STUDENT_SETTINGS_TAB_LABELS[ctx.tab] ?? titleCase(ctx.tab),
+        });
+      } else {
+        crumbs[crumbs.length - 1] = { label: "Settings" };
+      }
+      return crumbs;
+    },
   },
 
   // ── Academy ─────────────────────────────────────────────

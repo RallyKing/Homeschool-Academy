@@ -49,16 +49,38 @@ export const create = mutation({
 export const update = mutation({
   args: {
     familyId: v.id("families"),
-    name: v.string(),
+    name: v.optional(v.string()),
+    parentGuardrailContext: v.optional(v.string()),
+    defaultPublicCheer: v.optional(v.boolean()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
     await requireFamilyAccess(ctx, args.familyId);
-    const name = args.name.trim();
-    if (!name) {
-      throw new Error("Family name is required");
+    const patch: {
+      name?: string;
+      parentGuardrailContext?: string;
+      defaultPublicCheer?: boolean;
+    } = {};
+
+    if (args.name !== undefined) {
+      const name = args.name.trim();
+      if (!name) {
+        throw new Error("Family name is required");
+      }
+      patch.name = name;
     }
-    await ctx.db.patch("families", args.familyId, { name });
+    if (args.parentGuardrailContext !== undefined) {
+      patch.parentGuardrailContext = args.parentGuardrailContext.trim();
+    }
+    if (args.defaultPublicCheer !== undefined) {
+      patch.defaultPublicCheer = args.defaultPublicCheer;
+    }
+
+    if (Object.keys(patch).length === 0) {
+      throw new Error("No changes provided");
+    }
+
+    await ctx.db.patch("families", args.familyId, patch);
     return null;
   },
 });
@@ -87,8 +109,34 @@ export const get = query({
   args: { familyId: v.id("families") },
   returns: v.union(familyDocValidator, v.null()),
   handler: async (ctx, args) => {
-    await requireFamilyAccess(ctx, args.familyId);
-    return await ctx.db.get("families", args.familyId);
+    const user = await getCurrentUser(ctx);
+    const family = await ctx.db.get("families", args.familyId);
+    if (!family) return null;
+
+    if (user.role === "superAdmin") {
+      return family;
+    }
+
+    const membership = await ctx.db
+      .query("familyMembers")
+      .withIndex("by_family_and_user", (q) =>
+        q.eq("familyId", args.familyId).eq("userId", user._id),
+      )
+      .unique();
+    if (membership) {
+      return family;
+    }
+
+    // Linked students may read their own family (settings / privacy defaults).
+    const student = await ctx.db
+      .query("students")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .first();
+    if (student && student.familyId === args.familyId) {
+      return family;
+    }
+
+    throw new Error("Unauthorized: no access to this family");
   },
 });
 
@@ -166,6 +214,55 @@ export const addMember = mutation({
     return await ctx.db.insert("familyMembers", {
       familyId: args.familyId,
       userId: args.userId,
+      role: args.role,
+      createdAt: Date.now(),
+    });
+  },
+});
+
+export const addMemberByEmail = mutation({
+  args: {
+    familyId: v.id("families"),
+    email: v.string(),
+    role: v.union(v.literal("parent"), v.literal("guardian")),
+  },
+  returns: v.id("familyMembers"),
+  handler: async (ctx, args) => {
+    await requireFamilyAccess(ctx, args.familyId);
+    const email = args.email.trim().toLowerCase();
+    if (!email.includes("@")) {
+      throw new Error("Enter a valid email");
+    }
+
+    const target = await ctx.db
+      .query("users")
+      .withIndex("email", (q) => q.eq("email", email))
+      .unique();
+
+    if (!target) {
+      throw new Error(
+        "No account found with that email. Have them sign up first.",
+      );
+    }
+
+    const existing = await ctx.db
+      .query("familyMembers")
+      .withIndex("by_family_and_user", (q) =>
+        q.eq("familyId", args.familyId).eq("userId", target._id),
+      )
+      .unique();
+
+    if (existing) {
+      return existing._id;
+    }
+
+    if (!target.role || target.role === "student") {
+      await ctx.db.patch("users", target._id, { role: "parent" });
+    }
+
+    return await ctx.db.insert("familyMembers", {
+      familyId: args.familyId,
+      userId: target._id,
       role: args.role,
       createdAt: Date.now(),
     });

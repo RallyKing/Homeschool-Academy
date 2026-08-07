@@ -51,10 +51,15 @@ function FamilyAiInner() {
   const rejectProposal = useMutation(api.ai.badgeProposals.reject);
   const removeProposal = useMutation(api.ai.badgeProposals.remove);
   const updateProposal = useMutation(api.ai.badgeProposals.update);
+  const updateFamily = useMutation(api.families.update);
 
-  const [parentGuardrailContext, setParentGuardrailContext] = useState(
-    "Focus on STEM and reading. Age-appropriate only. block: dating, weapons",
-  );
+  const [parentGuardrailDraft, setParentGuardrailDraft] = useState<
+    string | null
+  >(null);
+  const parentGuardrailContext =
+    parentGuardrailDraft ??
+    family?.parentGuardrailContext ??
+    "Focus on STEM and reading. Age-appropriate only. block: dating, weapons";
   const [studentPrompt, setStudentPrompt] = useState(
     "Can you help me understand fractions?",
   );
@@ -91,6 +96,22 @@ function FamilyAiInner() {
   const [editId, setEditId] = useState<Id<"badgeProposals"> | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editDesc, setEditDesc] = useState("");
+
+  async function saveGuardrailsToFamily() {
+    if (!family) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await updateFamily({
+        familyId: family._id,
+        parentGuardrailContext,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function onGuardrails(e: FormEvent) {
     e.preventDefault();
@@ -224,7 +245,7 @@ function FamilyAiInner() {
               label="Parent guardrail context"
               rows={3}
               value={parentGuardrailContext}
-              onChange={(e) => setParentGuardrailContext(e.target.value)}
+              onChange={(e) => setParentGuardrailDraft(e.target.value)}
               required
             />
             <Textarea
@@ -237,6 +258,19 @@ function FamilyAiInner() {
             <Button type="submit" disabled={busy}>
               {busy ? "Checking…" : "Run guardrails"}
             </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={busy || !family}
+              onClick={() => void saveGuardrailsToFamily()}
+            >
+              Save to family settings
+            </Button>
+            <Link href="/family/settings?tab=ai">
+              <Button type="button" variant="ghost" size="sm">
+                Open settings
+              </Button>
+            </Link>
           </form>
         </Section>
 
@@ -284,7 +318,7 @@ function FamilyAiInner() {
               label="Guardrails for badge tone"
               rows={2}
               value={parentGuardrailContext}
-              onChange={(e) => setParentGuardrailContext(e.target.value)}
+              onChange={(e) => setParentGuardrailDraft(e.target.value)}
             />
             <Button type="button" disabled={busy || !studentId} onClick={() => void onCraft()}>
               {busy ? "Crafting…" : "Propose badges"}

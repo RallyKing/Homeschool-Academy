@@ -50,6 +50,10 @@ export const studentDocValidator = v.object({
   academicLevel: v.optional(v.string()),
   imageStorageId: v.optional(v.id("_storage")),
   createdAt: v.number(),
+  defaultPublicCheer: v.optional(v.boolean()),
+  notifyKudos: v.optional(v.boolean()),
+  notifyChores: v.optional(v.boolean()),
+  notifyQuests: v.optional(v.boolean()),
 });
 
 export const logStatusValidator = v.union(
@@ -96,6 +100,7 @@ export const subjectDocValidator = v.object({
   name: v.string(),
   category: subjectCategoryValidator,
   createdAt: v.number(),
+  familyId: v.optional(v.id("families")),
 });
 
 export const familyDocValidator = v.object({
@@ -104,6 +109,9 @@ export const familyDocValidator = v.object({
   name: v.string(),
   createdBy: v.id("users"),
   createdAt: v.number(),
+  parentGuardrailContext: v.optional(v.string()),
+  hiddenSubjectIds: v.optional(v.array(v.id("subjects"))),
+  defaultPublicCheer: v.optional(v.boolean()),
 });
 
 export const courseDocValidator = v.object({
