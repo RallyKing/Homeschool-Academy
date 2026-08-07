@@ -326,6 +326,7 @@ export const markDone = mutation({
       points: rewards.points,
       stars: rewards.stars,
       source: "chore",
+      sourceId: args.choreId,
       choreIncrement: 1,
     });
 

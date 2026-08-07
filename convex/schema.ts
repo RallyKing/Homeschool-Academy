@@ -463,6 +463,39 @@ export default defineSchema({
     .index("by_student", ["studentId"])
     .index("by_family_and_date", ["familyId", "date"]),
 
+  /**
+   * Per-source award ledger so nullify/delete/restore can reverse or re-apply
+   * XP/points/stars without double-counting. Streak side-effects are not stored.
+   */
+  gamificationAwards: defineTable({
+    studentId: v.id("students"),
+    familyId: v.id("families"),
+    sourceType: v.union(
+      v.literal("log"),
+      v.literal("chore"),
+      v.literal("accolade"),
+      v.literal("quest"),
+      v.literal("badge"),
+      v.literal("bonus"),
+      v.literal("social"),
+    ),
+    sourceId: v.string(),
+    xp: v.number(),
+    points: v.number(),
+    stars: v.number(),
+    logIncrement: v.optional(v.number()),
+    choreIncrement: v.optional(v.number()),
+    minutesIncrement: v.optional(v.number()),
+    newSubject: v.optional(v.boolean()),
+    awardDate: v.optional(v.string()), // YYYY-MM-DD when awarded
+    weekStart: v.optional(v.string()),
+    createdAt: v.number(),
+    reversedAt: v.optional(v.number()),
+  })
+    .index("by_source", ["sourceType", "sourceId"])
+    .index("by_student", ["studentId"])
+    .index("by_student_and_source", ["studentId", "sourceType", "sourceId"]),
+
   // ── Chores ────────────────────────────────────────────────────
   chores: defineTable({
     familyId: v.id("families"),

@@ -184,7 +184,7 @@ export function ParentStudentLogsPanel({
       setNullifyLogId(null);
       setNullifyReason("");
       setMessage(
-        "Log nullified. It stays for audit but is excluded from progress totals. XP already awarded is not reversed.",
+        "Log nullified. It stays for audit, drops from progress totals, and XP/points/stars from that log are reversed.",
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to nullify log");
@@ -345,13 +345,17 @@ export function ParentStudentLogsPanel({
                           onClick={() => {
                             if (
                               !window.confirm(
-                                "Permanently delete this log? Prefer Nullify to keep an audit trail.",
+                                "Permanently delete this log? XP/points/stars from it will be reversed. Prefer Nullify to keep an audit trail.",
                               )
                             ) {
                               return;
                             }
                             void removeLog({ logId: log._id })
-                              .then(() => setMessage("Log deleted."))
+                              .then(() =>
+                                setMessage(
+                                  "Log deleted. XP/points/stars from that log were reversed.",
+                                ),
+                              )
                               .catch((err) =>
                                 setError(
                                   err instanceof Error
@@ -405,7 +409,9 @@ export function ParentStudentLogsPanel({
                           onClick={() =>
                             void restoreLog({ logId: log._id })
                               .then(() =>
-                                setMessage("Log restored to active."),
+                                setMessage(
+                                  "Log restored. XP/points/stars were re-applied if they had been reversed.",
+                                ),
                               )
                               .catch((err) =>
                                 setError(
@@ -535,7 +541,7 @@ export function ParentStudentLogsPanel({
           setNullifyReason("");
         }}
         title="Nullify log"
-        description="Soft-void this entry. It remains visible for audit but is excluded from progress charts. XP already earned is not reversed."
+        description="Soft-void this entry. It remains visible for audit, drops from progress charts, and reverses XP/points/stars awarded for this log."
         size="sm"
         footer={
           <>

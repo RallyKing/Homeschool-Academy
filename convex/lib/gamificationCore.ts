@@ -92,6 +92,11 @@ export type AwardArgs = {
   points: number;
   stars: number;
   source: AwardSource;
+  /**
+   * When set, records a gamificationAwards row for this source so
+   * nullify/delete can reverse the base XP/points/stars (not streak bonuses).
+   */
+  sourceId?: string;
   /** Extra counters for badge criteria */
   logIncrement?: number;
   choreIncrement?: number;
@@ -101,6 +106,8 @@ export type AwardArgs = {
   skipQuests?: boolean;
   /** Skip streak update (e.g. pure shop refunds / internal adjustments) */
   skipStreak?: boolean;
+  /** Skip writing the award ledger (internal re-apply path) */
+  skipLedger?: boolean;
 };
 
 const DEFAULT_QUESTS: Array<{
@@ -511,6 +518,26 @@ export async function awardProgress(
     }
   }
 
+  if (args.sourceId && !args.skipLedger) {
+    await ctx.db.insert("gamificationAwards", {
+      studentId: args.studentId,
+      familyId: args.familyId,
+      sourceType: args.source,
+      sourceId: args.sourceId,
+      // Ledger stores the direct source amounts only (not streak/badge bonuses).
+      xp: Math.max(0, args.xp),
+      points: Math.max(0, args.points),
+      stars: Math.max(0, args.stars),
+      logIncrement: args.logIncrement,
+      choreIncrement: args.choreIncrement,
+      minutesIncrement: args.minutesIncrement,
+      newSubject: args.newSubject,
+      awardDate: args.today,
+      weekStart: args.weekStart,
+      createdAt: Date.now(),
+    });
+  }
+
   return {
     xpGained: xpGain,
     pointsGained: pointsGain,
@@ -525,6 +552,359 @@ export async function awardProgress(
     comebackBonus: streak.comebackBonus,
     newBadges: awardedBadgeSummaries,
   };
+}
+
+function floor0(n: number): number {
+  return Math.max(0, n);
+}
+
+async function listAwardsForSource(
+  ctx: MutationCtx,
+  sourceType: AwardSource,
+  sourceId: string,
+) {
+  return await ctx.db
+    .query("gamificationAwards")
+    .withIndex("by_source", (q) =>
+      q.eq("sourceType", sourceType).eq("sourceId", sourceId),
+    )
+    .collect();
+}
+
+async function revokeBadgesNoLongerMet(
+  ctx: MutationCtx,
+  studentId: Id<"students">,
+  profile: Doc<"studentGamification">,
+): Promise<void> {
+  const earned = await ctx.db
+    .query("studentBadges")
+    .withIndex("by_student", (q) => q.eq("studentId", studentId))
+    .collect();
+  if (earned.length === 0) return;
+
+  let xp = profile.xp;
+  let points = profile.points;
+  let level = profile.level;
+  let patched = false;
+
+  for (const row of earned) {
+    const badge = await ctx.db.get("badges", row.badgeId);
+    if (!badge || badge.criteriaType === "manual") continue;
+
+    const need = badge.criteriaValue ?? 1;
+    let met = false;
+    switch (badge.criteriaType) {
+      case "logs_count":
+        met = profile.totalLogs >= need;
+        break;
+      case "streak":
+        met = profile.currentStreak >= need;
+        break;
+      case "stars":
+        met = profile.stars >= need;
+        break;
+      case "chores_completed":
+        met = profile.totalChoresCompleted >= need;
+        break;
+      case "minutes_logged":
+        met = profile.totalMinutesLogged >= need;
+        break;
+      case "subjects_explored":
+        met = profile.distinctSubjectsLogged >= need;
+        break;
+      case "level":
+        met = level >= need;
+        break;
+      default:
+        met = true;
+    }
+    if (met) continue;
+
+    await ctx.db.delete("studentBadges", row._id);
+    const bx = badge.xpReward ?? 0;
+    const bp = badge.pointsReward ?? 0;
+    if (bx > 0 || bp > 0) {
+      xp = floor0(xp - bx);
+      points = floor0(points - bp);
+      level = levelFromXp(xp);
+      patched = true;
+    }
+  }
+
+  if (patched) {
+    await ctx.db.patch("studentGamification", profile._id, {
+      xp,
+      points,
+      level,
+      updatedAt: Date.now(),
+    });
+  }
+}
+
+/**
+ * Best-effort quest progress undo. Does not claw back quest completion XP/points
+ * if the quest was already completed/claimed.
+ */
+async function reverseQuestProgress(
+  ctx: MutationCtx,
+  args: {
+    studentId: Id<"students">;
+    awardDate?: string;
+    minutes: number;
+    chores: number;
+    stars: number;
+  },
+): Promise<void> {
+  if (!args.awardDate) return;
+  if (args.minutes <= 0 && args.chores <= 0 && args.stars <= 0) return;
+
+  const quests = await ctx.db
+    .query("dailyQuests")
+    .withIndex("by_student_and_date", (q) =>
+      q.eq("studentId", args.studentId).eq("date", args.awardDate!),
+    )
+    .collect();
+
+  for (const q of quests) {
+    let sub = 0;
+    if (q.questKey === "log_30_min") sub = args.minutes;
+    else if (q.questKey === "complete_chore") sub = args.chores;
+    else if (q.questKey === "earn_2_stars") sub = args.stars;
+    if (sub <= 0) continue;
+    // Only unwind progress if the quest was never completed (safe path).
+    if (q.completed) continue;
+    await ctx.db.patch("dailyQuests", q._id, {
+      currentValue: floor0(q.currentValue - sub),
+    });
+  }
+}
+
+export type ReverseAwardResult = {
+  reversed: boolean;
+  xpReversed: number;
+  pointsReversed: number;
+  starsReversed: number;
+};
+
+/**
+ * Reverse base XP/points/stars for a source. Idempotent: already-reversed awards
+ * are skipped. Legacy sources without a ledger row can pass `fallback` amounts.
+ *
+ * Streak is intentionally NOT recomputed (best-effort honesty).
+ */
+export async function reverseAwardsForSource(
+  ctx: MutationCtx,
+  args: {
+    studentId: Id<"students">;
+    familyId: Id<"families">;
+    sourceType: AwardSource;
+    sourceId: string;
+    fallback?: {
+      xp: number;
+      points: number;
+      stars: number;
+      logIncrement?: number;
+      choreIncrement?: number;
+      minutesIncrement?: number;
+      newSubject?: boolean;
+      awardDate?: string;
+      weekStart?: string;
+    };
+  },
+): Promise<ReverseAwardResult> {
+  const existing = await listAwardsForSource(
+    ctx,
+    args.sourceType,
+    args.sourceId,
+  );
+  const active = existing.filter((a) => a.reversedAt === undefined);
+
+  let awards = active;
+  if (awards.length === 0) {
+    // Already reversed → no-op (avoid double-reverse)
+    if (existing.some((a) => a.reversedAt !== undefined)) {
+      return {
+        reversed: false,
+        xpReversed: 0,
+        pointsReversed: 0,
+        starsReversed: 0,
+      };
+    }
+    // Legacy: synthesize from fallback so pre-ledger logs still reverse
+    if (!args.fallback) {
+      return {
+        reversed: false,
+        xpReversed: 0,
+        pointsReversed: 0,
+        starsReversed: 0,
+      };
+    }
+    const id = await ctx.db.insert("gamificationAwards", {
+      studentId: args.studentId,
+      familyId: args.familyId,
+      sourceType: args.sourceType,
+      sourceId: args.sourceId,
+      xp: Math.max(0, args.fallback.xp),
+      points: Math.max(0, args.fallback.points),
+      stars: Math.max(0, args.fallback.stars),
+      logIncrement: args.fallback.logIncrement,
+      choreIncrement: args.fallback.choreIncrement,
+      minutesIncrement: args.fallback.minutesIncrement,
+      newSubject: args.fallback.newSubject,
+      awardDate: args.fallback.awardDate,
+      weekStart: args.fallback.weekStart,
+      createdAt: Date.now(),
+    });
+    const doc = await ctx.db.get("gamificationAwards", id);
+    if (!doc) {
+      return {
+        reversed: false,
+        xpReversed: 0,
+        pointsReversed: 0,
+        starsReversed: 0,
+      };
+    }
+    awards = [doc];
+  }
+
+  let xpRev = 0;
+  let pointsRev = 0;
+  let starsRev = 0;
+  let logInc = 0;
+  let choreInc = 0;
+  let minutesInc = 0;
+  let subjectDec = 0;
+  let awardDate: string | undefined;
+  let weekStart: string | undefined;
+
+  for (const award of awards) {
+    xpRev += award.xp;
+    pointsRev += award.points;
+    starsRev += award.stars;
+    logInc += award.logIncrement ?? 0;
+    choreInc += award.choreIncrement ?? 0;
+    minutesInc += award.minutesIncrement ?? 0;
+    if (award.newSubject) subjectDec += 1;
+    awardDate = award.awardDate ?? awardDate;
+    weekStart = award.weekStart ?? weekStart;
+    await ctx.db.patch("gamificationAwards", award._id, {
+      reversedAt: Date.now(),
+    });
+  }
+
+  const profile = await getOrCreateGamification(
+    ctx,
+    args.studentId,
+    args.familyId,
+  );
+
+  const xp = floor0(profile.xp - xpRev);
+  const points = floor0(profile.points - pointsRev);
+  const stars = floor0(profile.stars - starsRev);
+  const level = levelFromXp(xp);
+
+  let weeklyXp = profile.weeklyXp;
+  let weeklyPoints = profile.weeklyPoints;
+  let weeklyStars = profile.weeklyStars;
+  if (weekStart && profile.weekStart === weekStart) {
+    weeklyXp = floor0(weeklyXp - xpRev);
+    weeklyPoints = floor0(weeklyPoints - pointsRev);
+    weeklyStars = floor0(weeklyStars - starsRev);
+  }
+
+  await ctx.db.patch("studentGamification", profile._id, {
+    xp,
+    points,
+    stars,
+    level,
+    weeklyXp,
+    weeklyPoints,
+    weeklyStars,
+    totalLogs: floor0(profile.totalLogs - logInc),
+    totalChoresCompleted: floor0(profile.totalChoresCompleted - choreInc),
+    totalMinutesLogged: floor0(profile.totalMinutesLogged - minutesInc),
+    distinctSubjectsLogged: floor0(
+      profile.distinctSubjectsLogged - subjectDec,
+    ),
+    updatedAt: Date.now(),
+  });
+
+  await reverseQuestProgress(ctx, {
+    studentId: args.studentId,
+    awardDate,
+    minutes: minutesInc,
+    chores: choreInc,
+    stars: starsRev,
+  });
+
+  const refreshed = await ctx.db.get("studentGamification", profile._id);
+  if (refreshed) {
+    await revokeBadgesNoLongerMet(ctx, args.studentId, refreshed);
+  }
+
+  return {
+    reversed: true,
+    xpReversed: xpRev,
+    pointsReversed: pointsRev,
+    starsReversed: starsRev,
+  };
+}
+
+/**
+ * Re-apply previously reversed awards for a source (e.g. log restore).
+ * Idempotent when awards are already active.
+ * Only re-applies when a reversed ledger row exists — legacy nullifies that
+ * never reversed XP must not grant a second award on restore.
+ */
+export async function reapplyAwardsForSource(
+  ctx: MutationCtx,
+  args: {
+    studentId: Id<"students">;
+    familyId: Id<"families">;
+    sourceType: AwardSource;
+    sourceId: string;
+    today: string;
+    weekStart?: string;
+  },
+): Promise<{ reapplied: boolean }> {
+  const existing = await listAwardsForSource(
+    ctx,
+    args.sourceType,
+    args.sourceId,
+  );
+  const active = existing.filter((a) => a.reversedAt === undefined);
+  if (active.length > 0) {
+    return { reapplied: false };
+  }
+
+  const reversed = existing.filter((a) => a.reversedAt !== undefined);
+  if (reversed.length === 0) {
+    return { reapplied: false };
+  }
+
+  for (const award of reversed) {
+    await awardProgress(ctx, {
+      studentId: args.studentId,
+      familyId: args.familyId,
+      today: args.today,
+      weekStart: args.weekStart ?? award.weekStart,
+      xp: award.xp,
+      points: award.points,
+      stars: award.stars,
+      source: args.sourceType,
+      sourceId: args.sourceId,
+      logIncrement: award.logIncrement,
+      choreIncrement: award.choreIncrement,
+      minutesIncrement: award.minutesIncrement,
+      newSubject: award.newSubject,
+      skipStreak: true,
+      skipLedger: true,
+    });
+    await ctx.db.patch("gamificationAwards", award._id, {
+      reversedAt: undefined,
+    });
+  }
+  return { reapplied: true };
 }
 
 async function bumpDailyQuests(
@@ -653,6 +1033,14 @@ export async function deleteGamificationForStudent(
     .collect();
   for (const b of badges) {
     await ctx.db.delete("studentBadges", b._id);
+  }
+
+  const awards = await ctx.db
+    .query("gamificationAwards")
+    .withIndex("by_student", (q) => q.eq("studentId", studentId))
+    .collect();
+  for (const a of awards) {
+    await ctx.db.delete("gamificationAwards", a._id);
   }
 
   const accolades = await ctx.db

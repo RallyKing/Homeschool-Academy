@@ -32,7 +32,7 @@ export default function FamilyLedgerPage() {
       <PageHeader
         compact
         title="Learning ledger"
-        description="Create, edit, delete, or nullify student logs. Nullified entries keep an audit trail and drop out of progress totals."
+        description="Create, edit, delete, or nullify student logs. Nullify or delete reverses XP/points/stars from that log; nullified entries keep an audit trail and drop out of progress totals."
       />
 
       {students.length === 0 ? (

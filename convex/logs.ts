@@ -6,6 +6,8 @@ import { getCurrentUser, requireStudentFamilyAccess } from "./lib/auth";
 import { entryTypeValidator, logDocValidator } from "./lib/validators";
 import {
   awardProgress,
+  reapplyAwardsForSource,
+  reverseAwardsForSource,
   rewardsForLog,
 } from "./lib/gamificationCore";
 
@@ -122,6 +124,7 @@ export const create = mutation({
       points: rewards.points,
       stars: rewards.stars,
       source: "log",
+      sourceId: logId,
       logIncrement: 1,
       minutesIncrement: args.durationMinutes,
       newSubject,
@@ -291,7 +294,10 @@ export const remove = mutation({
       throw new Error("Log not found");
     }
 
-    const { user } = await requireStudentFamilyAccess(ctx, log.studentId);
+    const { user, student } = await requireStudentFamilyAccess(
+      ctx,
+      log.studentId,
+    );
     if (
       user.role !== "parent" &&
       user.role !== "superAdmin" &&
@@ -300,14 +306,44 @@ export const remove = mutation({
       throw new Error("Unauthorized to delete this log");
     }
 
+    // Reverse rewards if still active (nullified logs already reversed).
+    if (isLogActive(log)) {
+      const rewards = rewardsForLog(log.durationMinutes);
+      await reverseAwardsForSource(ctx, {
+        studentId: student._id,
+        familyId: student.familyId,
+        sourceType: "log",
+        sourceId: args.logId,
+        fallback: {
+          xp: rewards.xp,
+          points: rewards.points,
+          stars: rewards.stars,
+          logIncrement: 1,
+          minutesIncrement: log.durationMinutes,
+          awardDate: new Date(log.createdAt).toISOString().slice(0, 10),
+        },
+      });
+    }
+
+    const awardRows = await ctx.db
+      .query("gamificationAwards")
+      .withIndex("by_source", (q) =>
+        q.eq("sourceType", "log").eq("sourceId", args.logId),
+      )
+      .collect();
+    for (const row of awardRows) {
+      await ctx.db.delete("gamificationAwards", row._id);
+    }
+
     await ctx.db.delete("logs", args.logId);
     return null;
   },
 });
 
 /**
- * Soft-void a log for audit trail. Does NOT reverse XP/points already awarded
- * on create — progress charts and summaries simply exclude nullified entries.
+ * Soft-void a log for audit trail. Reverses XP/points/stars from the award
+ * ledger (or synthesizes from duration for pre-ledger logs). Streak is left
+ * unchanged; badges are revoked only when criteria are no longer met.
  */
 export const nullify = mutation({
   args: {
@@ -321,12 +357,31 @@ export const nullify = mutation({
       throw new Error("Log not found");
     }
 
-    const { user } = await requireStudentFamilyAccess(ctx, log.studentId);
+    const { user, student } = await requireStudentFamilyAccess(
+      ctx,
+      log.studentId,
+    );
     requireParentOrAdmin(user);
 
     if (!isLogActive(log)) {
       throw new Error("Log is already nullified");
     }
+
+    const rewards = rewardsForLog(log.durationMinutes);
+    await reverseAwardsForSource(ctx, {
+      studentId: student._id,
+      familyId: student.familyId,
+      sourceType: "log",
+      sourceId: args.logId,
+      fallback: {
+        xp: rewards.xp,
+        points: rewards.points,
+        stars: rewards.stars,
+        logIncrement: 1,
+        minutesIncrement: log.durationMinutes,
+        awardDate: new Date(log.createdAt).toISOString().slice(0, 10),
+      },
+    });
 
     const reason = args.reason?.trim();
     await ctx.db.patch("logs", args.logId, {
@@ -341,7 +396,11 @@ export const nullify = mutation({
 });
 
 export const restore = mutation({
-  args: { logId: v.id("logs") },
+  args: {
+    logId: v.id("logs"),
+    today: v.optional(v.string()),
+    weekStart: v.optional(v.string()),
+  },
   returns: v.null(),
   handler: async (ctx, args) => {
     const log = await ctx.db.get("logs", args.logId);
@@ -349,12 +408,26 @@ export const restore = mutation({
       throw new Error("Log not found");
     }
 
-    const { user } = await requireStudentFamilyAccess(ctx, log.studentId);
+    const { user, student } = await requireStudentFamilyAccess(
+      ctx,
+      log.studentId,
+    );
     requireParentOrAdmin(user);
 
     if (isLogActive(log)) {
       throw new Error("Log is not nullified");
     }
+
+    const today = args.today ?? new Date().toISOString().slice(0, 10);
+
+    await reapplyAwardsForSource(ctx, {
+      studentId: student._id,
+      familyId: student.familyId,
+      sourceType: "log",
+      sourceId: args.logId,
+      today,
+      weekStart: args.weekStart,
+    });
 
     await ctx.db.patch("logs", args.logId, {
       status: "active",
