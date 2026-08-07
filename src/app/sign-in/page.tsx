@@ -44,6 +44,14 @@ export default function SignInPage() {
             autoComplete="current-password"
           />
           <input name="flow" type="hidden" value="signIn" />
+          <div className="flex justify-end">
+            <Link
+              href="/reset-password"
+              className="text-sm font-medium text-[var(--accent)] hover:underline"
+            >
+              Forgot password?
+            </Link>
+          </div>
           <Message tone="error">{error}</Message>
           <Button type="submit" disabled={loading} className="w-full">
             {loading ? "Signing in…" : "Sign in"}

@@ -27,6 +27,26 @@ npx @convex-dev/auth --web-server-url http://localhost:3000
 npm run dev
 ```
 
+## Password reset
+
+Sign-in includes **Forgot password?** → `/reset-password`.
+
+1. User enters email (`flow=reset`) → Convex Auth emails an 8-digit OTP (via Resend)
+2. User enters code + new password (`flow=reset-verification`) → password updated and signed in
+
+### Email env (Convex deployment)
+
+Set on the Convex deployment (Dashboard → Settings → Environment Variables, or CLI):
+
+| Variable | Required | Purpose |
+|----------|----------|---------|
+| `AUTH_RESEND_KEY` | Yes (for email) | Resend API key (preferred name) |
+| `RESEND_API_KEY` | Alias | Same key if you prefer this name |
+| `AUTH_EMAIL_FROM` | No | From address; default `Homeschool Academy <onboarding@resend.dev>` |
+| `SITE_URL` | Yes (auth) | App origin, e.g. `https://homeschool-academy.vercel.app` |
+
+Without `AUTH_RESEND_KEY` / `RESEND_API_KEY`, reset UI still works: the OTP is **logged in Convex logs** so you can complete a reset in development or as an emergency recovery path. Production should set a Resend key and a verified `AUTH_EMAIL_FROM` domain.
+
 ## Demo path (parent)
 
 1. Sign up as **Parent** → onboarding creates a family
