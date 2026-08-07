@@ -14,3 +14,5 @@ export {
   Message,
   LinkButton,
 } from "./Section";
+export { Tabs, TabPanel } from "./Tabs";
+export type { TabItem } from "./Tabs";

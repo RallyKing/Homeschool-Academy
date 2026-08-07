@@ -204,13 +204,26 @@ export const claimByName = mutation({
     const user = await requireRole(ctx, ["student", "superAdmin"]);
 
     const familyName = args.familyName.trim();
-    const families = await ctx.db
+    if (!familyName) {
+      throw new Error("Enter your family name");
+    }
+
+    // Prefer exact index match; fall back to case-insensitive scan for small tenancies.
+    let families = await ctx.db
       .query("families")
       .withIndex("by_name", (q) => q.eq("name", familyName))
       .collect();
 
     if (families.length === 0) {
-      throw new Error("No family found with that exact name");
+      const needle = familyName.toLowerCase();
+      const allFamilies = await ctx.db.query("families").take(500);
+      families = allFamilies.filter((f) => f.name.toLowerCase() === needle);
+    }
+
+    if (families.length === 0) {
+      throw new Error(
+        "No family found with that name. Ask your parent for the exact family name.",
+      );
     }
 
     const name = args.displayName.trim();

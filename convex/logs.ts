@@ -4,6 +4,10 @@ import { mutation, query } from "./_generated/server";
 import { alertFamily, alertStudent } from "./lib/alerts";
 import { getCurrentUser, requireStudentFamilyAccess } from "./lib/auth";
 import { entryTypeValidator, logDocValidator } from "./lib/validators";
+import {
+  awardProgress,
+  rewardsForLog,
+} from "./lib/gamificationCore";
 
 export const generateUploadUrl = mutation({
   args: {},
@@ -23,6 +27,8 @@ export const create = mutation({
     durationMinutes: v.number(),
     notes: v.optional(v.string()),
     storageId: v.optional(v.id("_storage")),
+    today: v.optional(v.string()),
+    weekStart: v.optional(v.string()),
   },
   returns: v.id("logs"),
   handler: async (ctx, args) => {
@@ -42,17 +48,21 @@ export const create = mutation({
       }
     }
 
+    let resolvedSubjectId = args.subjectId;
     if (args.subjectId) {
       const subject = await ctx.db.get("subjects", args.subjectId);
       if (!subject) {
         throw new Error("Subject not found");
       }
+    } else if (args.courseId) {
+      const course = await ctx.db.get("courses", args.courseId);
+      if (course) resolvedSubjectId = course.subjectId;
     }
 
     const logId = await ctx.db.insert("logs", {
       studentId: args.studentId,
       courseId: args.courseId,
-      subjectId: args.subjectId,
+      subjectId: resolvedSubjectId,
       entryType: args.entryType,
       durationMinutes: args.durationMinutes,
       notes: args.notes?.trim() || undefined,
@@ -62,7 +72,6 @@ export const create = mutation({
       createdAt: Date.now(),
     });
 
-    // Notify family when a student logged work; also when parent logs on their behalf
     await alertFamily(ctx, {
       familyId: student.familyId,
       studentId: student._id,
@@ -73,6 +82,37 @@ export const create = mutation({
       createdBy: user._id,
       sourceTable: "logs",
       sourceId: logId,
+    });
+
+    const today = args.today ?? new Date().toISOString().slice(0, 10);
+    const rewards = rewardsForLog(args.durationMinutes);
+
+    let newSubject = false;
+    if (resolvedSubjectId) {
+      const priorWithSubject = await ctx.db
+        .query("logs")
+        .withIndex("by_student", (q) => q.eq("studentId", args.studentId))
+        .collect();
+      const otherSubjects = new Set(
+        priorWithSubject
+          .filter((l) => l._id !== logId && l.subjectId)
+          .map((l) => l.subjectId as string),
+      );
+      newSubject = !otherSubjects.has(resolvedSubjectId);
+    }
+
+    await awardProgress(ctx, {
+      studentId: student._id,
+      familyId: student.familyId,
+      today,
+      weekStart: args.weekStart,
+      xp: rewards.xp,
+      points: rewards.points,
+      stars: rewards.stars,
+      source: "log",
+      logIncrement: 1,
+      minutesIncrement: args.durationMinutes,
+      newSubject,
     });
 
     return logId;

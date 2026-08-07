@@ -126,16 +126,11 @@ export default function FamilyLedgerPage() {
   }
 
   return (
-    <div className="space-y-8">
-      <Link href="/family/dashboard">
-        <Button variant="ghost" size="sm">
-          ← Family
-        </Button>
-      </Link>
-
+    <div className="page-stack">
       <PageHeader
+        compact
         title="Learning ledger"
-        description="Log time and completions. Verify entries as a parent."
+        description="Log time and completions. Verify as a parent."
       />
 
       {students.length === 0 ? (

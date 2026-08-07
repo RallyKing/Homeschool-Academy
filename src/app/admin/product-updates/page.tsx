@@ -88,7 +88,7 @@ export default function AdminProductUpdatesPage() {
           title: title.trim(),
           summary: summary.trim(),
           body: body.trim(),
-          version: version.trim() || undefined,
+          version: version.trim().replace(/^v/i, "") || undefined,
           status,
           syncKnowledgeBase: true,
         });
@@ -98,7 +98,7 @@ export default function AdminProductUpdatesPage() {
           title: title.trim(),
           summary: summary.trim(),
           body: body.trim(),
-          version: version.trim() || undefined,
+          version: version.trim().replace(/^v/i, "") || undefined,
           status,
         });
         notify(
@@ -203,7 +203,11 @@ export default function AdminProductUpdatesPage() {
                     <Badge tone={u.status === "published" ? "success" : "warning"}>
                       {u.status}
                     </Badge>
-                    {u.version && <Badge tone="neutral">v{u.version}</Badge>}
+                    {u.version && (
+                      <Badge tone="neutral">
+                        v{u.version.replace(/^v/i, "")}
+                      </Badge>
+                    )}
                     {u.knowledgeBaseArticleId && (
                       <Badge tone="accent">KB linked</Badge>
                     )}
@@ -296,7 +300,8 @@ export default function AdminProductUpdatesPage() {
           <div className="flex flex-wrap gap-4">
             <Input
               label="Version"
-              placeholder="Optional"
+              placeholder="e.g. 1.2.0"
+              hint="Don't include a leading v — it's shown automatically."
               value={version}
               onChange={(e) => setVersion(e.target.value)}
             />

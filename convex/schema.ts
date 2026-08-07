@@ -1,4 +1,4 @@
-﻿import { defineSchema, defineTable } from "convex/server";
+import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { authTables } from "@convex-dev/auth/server";
 
@@ -197,7 +197,7 @@ export default defineSchema({
     courseId: v.optional(v.id("courses")),
     title: v.string(),
     plannedMinutes: v.number(),
-    dayOfWeek: v.optional(v.number()), // 0ΓÇô6
+    dayOfWeek: v.optional(v.number()), // 0–6
     date: v.optional(v.string()), // ISO date
     createdAt: v.number(),
   })
@@ -240,6 +240,10 @@ export default defineSchema({
       v.literal("schedule_item_added"),
       v.literal("course_assigned"),
       v.literal("assignment_new"),
+      v.literal("chore_assigned"),
+      v.literal("chore_completed"),
+      v.literal("reward_redeemed"),
+      v.literal("accolade_awarded"),
       v.literal("general"),
     ),
     title: v.string(),
@@ -289,4 +293,160 @@ export default defineSchema({
     .index("by_status", ["status"])
     .index("by_category", ["category"])
     .index("by_productUpdate", ["productUpdateId"]),
+
+  // ── Gamification ──────────────────────────────────────────────
+  // XP = permanent progression. Points = spendable currency. Stars = prestige.
+  studentGamification: defineTable({
+    studentId: v.id("students"),
+    familyId: v.id("families"),
+    xp: v.number(),
+    level: v.number(),
+    points: v.number(),
+    stars: v.number(),
+    currentStreak: v.number(),
+    longestStreak: v.number(),
+    lastCompletionDate: v.optional(v.string()), // YYYY-MM-DD
+    streakFreezes: v.number(),
+    weeklyXp: v.number(),
+    weeklyPoints: v.number(),
+    weeklyStars: v.number(),
+    weekStart: v.optional(v.string()), // YYYY-MM-DD Sunday of tracked week
+    totalLogs: v.number(),
+    totalChoresCompleted: v.number(),
+    totalMinutesLogged: v.number(),
+    distinctSubjectsLogged: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_student", ["studentId"])
+    .index("by_family", ["familyId"])
+    .index("by_family_and_xp", ["familyId", "xp"]),
+
+  badges: defineTable({
+    key: v.string(),
+    title: v.string(),
+    description: v.string(),
+    iconKey: v.optional(v.string()),
+    xpReward: v.optional(v.number()),
+    pointsReward: v.optional(v.number()),
+    criteriaType: v.union(
+      v.literal("logs_count"),
+      v.literal("streak"),
+      v.literal("stars"),
+      v.literal("chores_completed"),
+      v.literal("minutes_logged"),
+      v.literal("subjects_explored"),
+      v.literal("level"),
+      v.literal("manual"),
+    ),
+    criteriaValue: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index("by_key", ["key"])
+    .index("by_criteriaType", ["criteriaType"]),
+
+  studentBadges: defineTable({
+    studentId: v.id("students"),
+    badgeId: v.id("badges"),
+    earnedAt: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_student", ["studentId"])
+    .index("by_badge", ["badgeId"])
+    .index("by_student_and_badge", ["studentId", "badgeId"]),
+
+  accolades: defineTable({
+    studentId: v.id("students"),
+    familyId: v.id("families"),
+    title: v.string(),
+    message: v.optional(v.string()),
+    awardedBy: v.id("users"),
+    bonusStars: v.optional(v.number()),
+    bonusPoints: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index("by_student", ["studentId"])
+    .index("by_family", ["familyId"]),
+
+  rewardCatalog: defineTable({
+    familyId: v.id("families"),
+    title: v.string(),
+    description: v.optional(v.string()),
+    costPoints: v.number(),
+    active: v.boolean(),
+    createdBy: v.id("users"),
+    createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
+  })
+    .index("by_family", ["familyId"])
+    .index("by_family_and_active", ["familyId", "active"]),
+
+  rewardRedemptions: defineTable({
+    familyId: v.id("families"),
+    studentId: v.id("students"),
+    rewardId: v.id("rewardCatalog"),
+    costPoints: v.number(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("fulfilled"),
+      v.literal("cancelled"),
+    ),
+    redeemedAt: v.number(),
+    fulfilledAt: v.optional(v.number()),
+    fulfilledBy: v.optional(v.id("users")),
+    notes: v.optional(v.string()),
+  })
+    .index("by_family", ["familyId"])
+    .index("by_student", ["studentId"])
+    .index("by_reward", ["rewardId"])
+    .index("by_family_and_status", ["familyId", "status"])
+    .index("by_student_and_status", ["studentId", "status"]),
+
+  dailyQuests: defineTable({
+    studentId: v.id("students"),
+    familyId: v.id("families"),
+    date: v.string(), // YYYY-MM-DD
+    questKey: v.string(),
+    title: v.string(),
+    description: v.string(),
+    targetValue: v.number(),
+    currentValue: v.number(),
+    completed: v.boolean(),
+    xpReward: v.number(),
+    pointsReward: v.number(),
+    claimedAt: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index("by_student_and_date", ["studentId", "date"])
+    .index("by_student", ["studentId"])
+    .index("by_family_and_date", ["familyId", "date"]),
+
+  // ── Chores ────────────────────────────────────────────────────
+  chores: defineTable({
+    familyId: v.id("families"),
+    studentId: v.id("students"),
+    title: v.string(),
+    description: v.optional(v.string()),
+    dueDate: v.optional(v.string()),
+    recurrence: v.union(
+      v.literal("once"),
+      v.literal("daily"),
+      v.literal("weekly"),
+    ),
+    status: v.union(
+      v.literal("todo"),
+      v.literal("done"),
+      v.literal("skipped"),
+    ),
+    xpReward: v.optional(v.number()),
+    pointsReward: v.optional(v.number()),
+    starsReward: v.optional(v.number()),
+    assignedBy: v.id("users"),
+    completedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
+  })
+    .index("by_family", ["familyId"])
+    .index("by_student", ["studentId"])
+    .index("by_student_and_status", ["studentId", "status"])
+    .index("by_family_and_status", ["familyId", "status"]),
 });

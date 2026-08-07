@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useState } from "react";
+import { FormEvent, Suspense, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
@@ -18,9 +18,15 @@ import {
   Message,
   Row,
   Col,
+  Tabs,
+  TabPanel,
 } from "@/components/ui";
+import { usePageTab } from "@/hooks/usePageTab";
 
-export default function FamilyCoursesPage() {
+const COURSE_TABS = ["courses", "structure"] as const;
+
+function FamilyCoursesInner() {
+  const [tab, setTab] = usePageTab(COURSE_TABS, "courses");
   const family = useQuery(api.users.myFamily);
   const subjects = useQuery(api.subjects.list);
   const courses = useQuery(api.courses.listForFamily, family ? {} : "skip");
@@ -136,6 +142,7 @@ export default function FamilyCoursesPage() {
       closeCourseModal();
       resetCourseForm();
       setSelectedCourse(id);
+      setTab("structure");
       setMessage("Course created.");
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Failed");
@@ -196,16 +203,11 @@ export default function FamilyCoursesPage() {
   }
 
   return (
-    <div className="space-y-8">
-      <Link href="/family/dashboard">
-        <Button variant="ghost" size="sm">
-          ← Family
-        </Button>
-      </Link>
-
+    <div className="page-stack">
       <PageHeader
+        compact
         title="Courses"
-        description="Native curricula (modules/lessons) or external trackers (Zearn-style)."
+        description="Native curricula or external trackers."
         actions={
           <Button size="sm" onClick={openCreateModal}>
             New course
@@ -213,265 +215,334 @@ export default function FamilyCoursesPage() {
         }
       />
 
-      <Section title="Your courses">
-        {courses === undefined ? (
-          <p className="text-sm text-[var(--muted)]">Loading…</p>
-        ) : courses.length === 0 ? (
-          <EmptyState>No courses yet — create one to get started.</EmptyState>
-        ) : (
-          <ul className="space-y-2">
-            {courses.map((c) => (
-              <li key={c._id} className="list-row">
-                <button
-                  type="button"
-                  className={`min-w-0 text-left text-sm ${selectedCourse === c._id ? "font-semibold text-[var(--accent)]" : "text-[var(--foreground)]"}`}
-                  onClick={() => setSelectedCourse(c._id)}
-                >
-                  {c.title} · {c.type}
-                  {c.externalSourceName ? ` (${c.externalSourceName})` : ""}
-                </button>
-                <span className="flex flex-wrap gap-2">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => openEditModal(c)}
-                  >
-                    Edit
-                  </Button>
-                  <Button
-                    variant="danger"
-                    size="sm"
+      <Message tone="success">{message}</Message>
+
+      <Tabs
+        tabs={[
+          { id: "courses", label: "Courses", count: courses?.length },
+          {
+            id: "structure",
+            label: "Structure",
+          },
+        ]}
+        value={tab}
+        onChange={(id) => {
+          if ((COURSE_TABS as readonly string[]).includes(id)) {
+            setTab(id as (typeof COURSE_TABS)[number]);
+          }
+        }}
+      />
+
+      <TabPanel id="courses" active={tab === "courses"}>
+        <Section title="Your courses">
+          {courses === undefined ? (
+            <p className="text-sm text-[var(--muted)]">Loading…</p>
+          ) : courses.length === 0 ? (
+            <EmptyState>No courses yet — create one to get started.</EmptyState>
+          ) : (
+            <ul className="space-y-1.5">
+              {courses.map((c) => (
+                <li key={c._id} className="list-row list-row-dense">
+                  <button
+                    type="button"
+                    className={`min-w-0 text-left text-sm ${selectedCourse === c._id ? "font-semibold text-[var(--accent)]" : "text-[var(--foreground)]"}`}
                     onClick={() => {
-                      if (
-                        !window.confirm(
-                          `Delete course "${c.title}" and all modules/lessons?`,
-                        )
-                      ) {
-                        return;
-                      }
-                      void removeCourse({ courseId: c._id })
-                        .then(() => {
-                          if (selectedCourse === c._id) {
-                            setSelectedCourse("");
-                          }
-                          setMessage("Course deleted.");
-                        })
-                        .catch((err) =>
-                          setMessage(
-                            err instanceof Error ? err.message : "Failed",
-                          ),
-                        );
+                      setSelectedCourse(c._id);
+                      setTab("structure");
                     }}
                   >
-                    Delete
-                  </Button>
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Section>
-
-      {selectedCourse && structure && (
-        <Section title={structure.course.title}>
-          {structure.course.type === "native" ? (
-            <>
-              {structure.modules.length === 0 ? (
-                <EmptyState>No modules yet — add one below.</EmptyState>
-              ) : (
-                <ul className="space-y-3">
-                  {structure.modules.map(({ module, lessons }) => (
-                    <li key={module._id}>
-                      <Card padding="sm">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <p className="font-medium text-[var(--foreground)]">
-                            {module.title}
-                          </p>
-                          <span className="flex gap-2">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => {
-                                const next = window.prompt(
-                                  "Module title",
-                                  module.title,
-                                );
-                                if (!next?.trim()) return;
-                                void updateModule({
-                                  moduleId: module._id,
-                                  title: next.trim(),
-                                })
-                                  .then(() => setMessage("Module updated."))
-                                  .catch((err) =>
-                                    setMessage(
-                                      err instanceof Error ? err.message : "Failed",
-                                    ),
-                                  );
-                              }}
-                            >
-                              Edit
-                            </Button>
-                            <Button
-                              variant="danger"
-                              size="sm"
-                              onClick={() => {
-                                if (
-                                  !window.confirm(
-                                    `Delete module "${module.title}" and its lessons?`,
-                                  )
-                                ) {
-                                  return;
-                                }
-                                void removeModule({ moduleId: module._id })
-                                  .then(() => setMessage("Module deleted."))
-                                  .catch((err) =>
-                                    setMessage(
-                                      err instanceof Error ? err.message : "Failed",
-                                    ),
-                                  );
-                              }}
-                            >
-                              Delete
-                            </Button>
-                          </span>
-                        </div>
-                        {lessons.length > 0 && (
-                          <ul className="mt-3 space-y-2 border-t border-[var(--border)] pt-3">
-                            {lessons.map((l) => (
-                              <li
-                                key={l._id}
-                                className="flex flex-wrap items-center justify-between gap-2 text-sm text-[var(--muted)]"
-                              >
-                                <span>
-                                  {l.title}
-                                  {l.estimatedMinutes
-                                    ? ` (${l.estimatedMinutes} min)`
-                                    : ""}
-                                </span>
-                                <span className="flex gap-2">
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => {
-                                      const next = window.prompt(
-                                        "Lesson title",
-                                        l.title,
-                                      );
-                                      if (!next?.trim()) return;
-                                      void updateLesson({
-                                        lessonId: l._id,
-                                        title: next.trim(),
-                                      })
-                                        .then(() => setMessage("Lesson updated."))
-                                        .catch((err) =>
-                                          setMessage(
-                                            err instanceof Error
-                                              ? err.message
-                                              : "Failed",
-                                          ),
-                                        );
-                                    }}
-                                  >
-                                    Edit
-                                  </Button>
-                                  <Button
-                                    variant="danger"
-                                    size="sm"
-                                    onClick={() => {
-                                      if (
-                                        !window.confirm(`Delete lesson "${l.title}"?`)
-                                      ) {
-                                        return;
-                                      }
-                                      void removeLesson({ lessonId: l._id })
-                                        .then(() => setMessage("Lesson deleted."))
-                                        .catch((err) =>
-                                          setMessage(
-                                            err instanceof Error
-                                              ? err.message
-                                              : "Failed",
-                                          ),
-                                        );
-                                    }}
-                                  >
-                                    Delete
-                                  </Button>
-                                </span>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </Card>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <Card>
-                <form onSubmit={(e) => void onAddModule(e)} className="flex flex-wrap gap-3">
-                  <div className="min-w-[12rem] flex-1">
-                    <Input
-                      label="New module"
-                      placeholder="Module title"
-                      value={moduleTitle}
-                      onChange={(e) => setModuleTitle(e.target.value)}
-                    />
-                  </div>
-                  <div className="flex items-end">
-                    <Button type="submit" variant="secondary">
-                      Add module
-                    </Button>
-                  </div>
-                </form>
-              </Card>
-              {structure.modules.length > 0 && (
-                <Card>
-                  <form
-                    onSubmit={(e) => void onAddLesson(e)}
-                    className="space-y-4"
-                  >
-                    <Select
-                      label="Module"
-                      value={
-                        lessonModuleId || structure.modules[0]?.module._id || ""
-                      }
-                      onChange={(e) => setLessonModuleId(e.target.value)}
+                    {c.title} · {c.type}
+                    {c.externalSourceName ? ` (${c.externalSourceName})` : ""}
+                  </button>
+                  <span className="flex flex-wrap gap-1.5">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setSelectedCourse(c._id);
+                        setTab("structure");
+                      }}
                     >
-                      {structure.modules.map(({ module }) => (
-                        <option key={module._id} value={module._id}>
-                          {module.title}
-                        </option>
-                      ))}
-                    </Select>
-                    <Row gap="sm">
-                      <Col span={12} md={8}>
-                        <Input
-                          label="Lesson title"
-                          placeholder="Lesson title"
-                          value={lessonTitle}
-                          onChange={(e) => setLessonTitle(e.target.value)}
-                        />
-                      </Col>
-                      <Col span={12} md={4} className="flex items-end">
-                        <Button type="submit" variant="secondary" className="w-full md:w-auto">
-                          Add lesson
-                        </Button>
-                      </Col>
-                    </Row>
-                  </form>
-                </Card>
-              )}
-            </>
-          ) : (
-            <Card>
-              <p className="text-sm text-[var(--muted)]">
-                External tracker — log time against this course in the ledger.
-              </p>
-            </Card>
+                      Structure
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => openEditModal(c)}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      onClick={() => {
+                        if (
+                          !window.confirm(
+                            `Delete course "${c.title}" and all modules/lessons?`,
+                          )
+                        ) {
+                          return;
+                        }
+                        void removeCourse({ courseId: c._id })
+                          .then(() => {
+                            if (selectedCourse === c._id) {
+                              setSelectedCourse("");
+                            }
+                            setMessage("Course deleted.");
+                          })
+                          .catch((err) =>
+                            setMessage(
+                              err instanceof Error ? err.message : "Failed",
+                            ),
+                          );
+                      }}
+                    >
+                      Delete
+                    </Button>
+                  </span>
+                </li>
+              ))}
+            </ul>
           )}
         </Section>
-      )}
+      </TabPanel>
 
-      <Message tone="success">{message}</Message>
+      <TabPanel id="structure" active={tab === "structure"}>
+        {!selectedCourse ? (
+          <EmptyState>
+            Select a course from the Courses tab to edit modules and lessons.
+          </EmptyState>
+        ) : !structure ? (
+          <p className="text-sm text-[var(--muted)]">Loading structure…</p>
+        ) : (
+          <Section
+            title={structure.course.title}
+            action={
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setTab("courses")}
+              >
+                All courses
+              </Button>
+            }
+          >
+            {structure.course.type === "native" ? (
+              <>
+                {structure.modules.length === 0 ? (
+                  <EmptyState>No modules yet — add one below.</EmptyState>
+                ) : (
+                  <ul className="space-y-3">
+                    {structure.modules.map(({ module, lessons }) => (
+                      <li key={module._id}>
+                        <Card padding="sm">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="font-medium text-[var(--foreground)]">
+                              {module.title}
+                            </p>
+                            <span className="flex gap-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  const next = window.prompt(
+                                    "Module title",
+                                    module.title,
+                                  );
+                                  if (!next?.trim()) return;
+                                  void updateModule({
+                                    moduleId: module._id,
+                                    title: next.trim(),
+                                  })
+                                    .then(() => setMessage("Module updated."))
+                                    .catch((err) =>
+                                      setMessage(
+                                        err instanceof Error
+                                          ? err.message
+                                          : "Failed",
+                                      ),
+                                    );
+                                }}
+                              >
+                                Edit
+                              </Button>
+                              <Button
+                                variant="danger"
+                                size="sm"
+                                onClick={() => {
+                                  if (
+                                    !window.confirm(
+                                      `Delete module "${module.title}" and its lessons?`,
+                                    )
+                                  ) {
+                                    return;
+                                  }
+                                  void removeModule({ moduleId: module._id })
+                                    .then(() => setMessage("Module deleted."))
+                                    .catch((err) =>
+                                      setMessage(
+                                        err instanceof Error
+                                          ? err.message
+                                          : "Failed",
+                                      ),
+                                    );
+                                }}
+                              >
+                                Delete
+                              </Button>
+                            </span>
+                          </div>
+                          {lessons.length > 0 && (
+                            <ul className="mt-3 space-y-2 border-t border-[var(--border)] pt-3">
+                              {lessons.map((l) => (
+                                <li
+                                  key={l._id}
+                                  className="flex flex-wrap items-center justify-between gap-2 text-sm text-[var(--muted)]"
+                                >
+                                  <span>
+                                    {l.title}
+                                    {l.estimatedMinutes
+                                      ? ` (${l.estimatedMinutes} min)`
+                                      : ""}
+                                  </span>
+                                  <span className="flex gap-2">
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => {
+                                        const next = window.prompt(
+                                          "Lesson title",
+                                          l.title,
+                                        );
+                                        if (!next?.trim()) return;
+                                        void updateLesson({
+                                          lessonId: l._id,
+                                          title: next.trim(),
+                                        })
+                                          .then(() =>
+                                            setMessage("Lesson updated."),
+                                          )
+                                          .catch((err) =>
+                                            setMessage(
+                                              err instanceof Error
+                                                ? err.message
+                                                : "Failed",
+                                            ),
+                                          );
+                                      }}
+                                    >
+                                      Edit
+                                    </Button>
+                                    <Button
+                                      variant="danger"
+                                      size="sm"
+                                      onClick={() => {
+                                        if (
+                                          !window.confirm(
+                                            `Delete lesson "${l.title}"?`,
+                                          )
+                                        ) {
+                                          return;
+                                        }
+                                        void removeLesson({ lessonId: l._id })
+                                          .then(() =>
+                                            setMessage("Lesson deleted."),
+                                          )
+                                          .catch((err) =>
+                                            setMessage(
+                                              err instanceof Error
+                                                ? err.message
+                                                : "Failed",
+                                            ),
+                                          );
+                                      }}
+                                    >
+                                      Delete
+                                    </Button>
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </Card>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <Card>
+                  <form
+                    onSubmit={(e) => void onAddModule(e)}
+                    className="flex flex-wrap gap-3"
+                  >
+                    <div className="min-w-[12rem] flex-1">
+                      <Input
+                        label="New module"
+                        placeholder="Module title"
+                        value={moduleTitle}
+                        onChange={(e) => setModuleTitle(e.target.value)}
+                      />
+                    </div>
+                    <div className="flex items-end">
+                      <Button type="submit" variant="secondary">
+                        Add module
+                      </Button>
+                    </div>
+                  </form>
+                </Card>
+                {structure.modules.length > 0 && (
+                  <Card>
+                    <form
+                      onSubmit={(e) => void onAddLesson(e)}
+                      className="space-y-4"
+                    >
+                      <Select
+                        label="Module"
+                        value={
+                          lessonModuleId ||
+                          structure.modules[0]?.module._id ||
+                          ""
+                        }
+                        onChange={(e) => setLessonModuleId(e.target.value)}
+                      >
+                        {structure.modules.map(({ module }) => (
+                          <option key={module._id} value={module._id}>
+                            {module.title}
+                          </option>
+                        ))}
+                      </Select>
+                      <Row gap="sm">
+                        <Col span={12} md={8}>
+                          <Input
+                            label="Lesson title"
+                            placeholder="Lesson title"
+                            value={lessonTitle}
+                            onChange={(e) => setLessonTitle(e.target.value)}
+                          />
+                        </Col>
+                        <Col span={12} md={4} className="flex items-end">
+                          <Button
+                            type="submit"
+                            variant="secondary"
+                            className="w-full md:w-auto"
+                          >
+                            Add lesson
+                          </Button>
+                        </Col>
+                      </Row>
+                    </form>
+                  </Card>
+                )}
+              </>
+            ) : (
+              <Card>
+                <p className="text-sm text-[var(--muted)]">
+                  External tracker — log time against this course in the ledger.
+                </p>
+              </Card>
+            )}
+          </Section>
+        )}
+      </TabPanel>
 
       <Modal
         open={courseModalOpen}
@@ -508,7 +579,11 @@ export default function FamilyCoursesPage() {
           </>
         }
       >
-        <form id="course-form" onSubmit={(e) => void onCreate(e)} className="space-y-4">
+        <form
+          id="course-form"
+          onSubmit={(e) => void onCreate(e)}
+          className="space-y-4"
+        >
           {!editingCourse && (
             <Select
               label="Type"
@@ -554,5 +629,13 @@ export default function FamilyCoursesPage() {
         </form>
       </Modal>
     </div>
+  );
+}
+
+export default function FamilyCoursesPage() {
+  return (
+    <Suspense fallback={<p className="text-sm text-[var(--muted)]">Loading…</p>}>
+      <FamilyCoursesInner />
+    </Suspense>
   );
 }

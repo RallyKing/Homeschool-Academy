@@ -38,11 +38,12 @@ export default function HelpPage() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="page-stack">
       <PageHeader
+        compact
         eyebrow="Support"
         title="Help"
-        description="Knowledge base articles, including docs for each product upgrade."
+        description="Knowledge base articles for each upgrade."
         actions={
           <Link href="/updates">
             <Button variant="secondary" size="sm">

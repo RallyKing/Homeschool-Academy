@@ -156,6 +156,24 @@ body {
   box-shadow: var(--shadow-md);
 }
 
+/* Compact density for inbox-style lists */
+.list-row-dense {
+  padding: 0.55rem 0.85rem;
+  gap: 0.5rem;
+}
+
+.page-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+@media (min-width: 640px) {
+  .page-stack {
+    gap: 1.5rem;
+  }
+}
+
 /* Native form controls when not using components */
 input[type="text"],
 input[type="email"],
@@ -172,4 +190,67 @@ textarea {
 /* Smooth scroll */
 html {
   scroll-behavior: smooth;
+}
+
+/* Gamification */
+.gamification-hero {
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border);
+  background:
+    linear-gradient(135deg, rgba(14, 116, 144, 0.08), transparent 55%),
+    var(--surface);
+  box-shadow: var(--shadow-sm);
+  padding: 1.25rem 1.5rem;
+}
+
+.xp-bar {
+  height: 0.5rem;
+  width: min(100%, 18rem);
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(12, 18, 34, 0.08);
+}
+
+.xp-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), #14b8a6);
+  transition: width 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.badge-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  padding: 0.45rem 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  box-shadow: var(--shadow-sm);
+}
+
+.badge-icon {
+  color: var(--accent);
+  font-size: 0.9rem;
+}
+
+@keyframes level-up-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(14, 116, 144, 0.35);
+    transform: scale(1);
+  }
+  40% {
+    box-shadow: 0 0 0 12px rgba(14, 116, 144, 0);
+    transform: scale(1.015);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(14, 116, 144, 0);
+    transform: scale(1);
+  }
+}
+
+.level-up-pulse {
+  animation: level-up-pulse 1.4s cubic-bezier(0.22, 1, 0.36, 1);
 }

@@ -1,4 +1,12 @@
-import type { InputHTMLAttributes, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
+"use client";
+
+import {
+  forwardRef,
+  useId,
+  type InputHTMLAttributes,
+  type SelectHTMLAttributes,
+  type TextareaHTMLAttributes,
+} from "react";
 import { cn } from "@/lib/cn";
 
 const fieldClass =
@@ -9,45 +17,63 @@ export type InputProps = InputHTMLAttributes<HTMLInputElement> & {
   hint?: string;
 };
 
-export function Input({ className, label, hint, id, ...props }: InputProps) {
-  const inputId = id ?? (label ? label.toLowerCase().replace(/\s+/g, "-") : undefined);
+export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
+  { className, label, hint, id, ...props },
+  ref,
+) {
+  const autoId = useId();
+  const inputId = id ?? autoId;
   return (
-    <label className="block text-sm font-medium text-[var(--muted)]">
+    <label htmlFor={inputId} className="block text-sm font-medium text-[var(--muted)]">
       {label}
-      <input id={inputId} className={cn(fieldClass, !label && "mt-0", className)} {...props} />
+      <input
+        ref={ref}
+        id={inputId}
+        className={cn(fieldClass, !label && "mt-0", className)}
+        {...props}
+      />
       {hint ? <span className="mt-1 block text-xs font-normal text-[var(--muted-fg)]">{hint}</span> : null}
     </label>
   );
-}
+});
 
 export type TextareaProps = TextareaHTMLAttributes<HTMLTextAreaElement> & {
   label?: string;
 };
 
-export function Textarea({ className, label, id, ...props }: TextareaProps) {
-  const inputId = id ?? (label ? label.toLowerCase().replace(/\s+/g, "-") : undefined);
-  return (
-    <label className="block text-sm font-medium text-[var(--muted)]">
-      {label}
-      <textarea
-        id={inputId}
-        className={cn(fieldClass, "min-h-[5.5rem] resize-y", !label && "mt-0", className)}
-        {...props}
-      />
-    </label>
-  );
-}
+export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
+  function Textarea({ className, label, id, ...props }, ref) {
+    const autoId = useId();
+    const inputId = id ?? autoId;
+    return (
+      <label htmlFor={inputId} className="block text-sm font-medium text-[var(--muted)]">
+        {label}
+        <textarea
+          ref={ref}
+          id={inputId}
+          className={cn(fieldClass, "min-h-[5.5rem] resize-y", !label && "mt-0", className)}
+          {...props}
+        />
+      </label>
+    );
+  },
+);
 
 export type SelectProps = SelectHTMLAttributes<HTMLSelectElement> & {
   label?: string;
 };
 
-export function Select({ className, label, id, children, ...props }: SelectProps) {
-  const inputId = id ?? (label ? label.toLowerCase().replace(/\s+/g, "-") : undefined);
+export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select(
+  { className, label, id, children, ...props },
+  ref,
+) {
+  const autoId = useId();
+  const inputId = id ?? autoId;
   return (
-    <label className="block text-sm font-medium text-[var(--muted)]">
+    <label htmlFor={inputId} className="block text-sm font-medium text-[var(--muted)]">
       {label}
       <select
+        ref={ref}
         id={inputId}
         className={cn(fieldClass, !label && "mt-0", className)}
         {...props}
@@ -56,7 +82,7 @@ export function Select({ className, label, id, children, ...props }: SelectProps
       </select>
     </label>
   );
-}
+});
 
 /** Shared class for uncontrolled native fields in forms. */
 export const controlClass = fieldClass;

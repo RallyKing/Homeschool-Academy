@@ -74,17 +74,21 @@ export function PageHeader({
   actions,
   eyebrow,
   className,
+  compact = false,
 }: {
   title: string;
   description?: React.ReactNode;
   actions?: React.ReactNode;
   eyebrow?: string;
   className?: string;
+  /** Tighter header for above-the-fold dashboards */
+  compact?: boolean;
 }) {
   return (
     <header
       className={cn(
-        "animate-fade-up mb-8 flex flex-wrap items-end justify-between gap-4 border-b border-[var(--border)] pb-6",
+        "animate-fade-up flex flex-wrap items-end justify-between gap-3 border-b border-[var(--border)]",
+        compact ? "mb-4 pb-4" : "mb-6 pb-5 sm:mb-8 sm:pb-6",
         className,
       )}
     >
@@ -94,11 +98,23 @@ export function PageHeader({
             {eyebrow}
           </p>
         ) : null}
-        <h1 className="font-display text-3xl font-semibold tracking-tight text-[var(--foreground)] sm:text-4xl">
+        <h1
+          className={cn(
+            "font-display font-semibold tracking-tight text-[var(--foreground)]",
+            compact
+              ? "text-2xl sm:text-3xl"
+              : "text-3xl sm:text-4xl",
+          )}
+        >
           {title}
         </h1>
         {description ? (
-          <p className="mt-2 text-base text-[var(--muted)] leading-relaxed">
+          <p
+            className={cn(
+              "text-[var(--muted)] leading-relaxed",
+              compact ? "mt-1 text-sm" : "mt-2 text-base",
+            )}
+          >
             {description}
           </p>
         ) : null}

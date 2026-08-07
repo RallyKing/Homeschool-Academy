@@ -22,6 +22,9 @@ const sizes = {
   lg: "max-w-2xl",
 };
 
+const FOCUSABLE =
+  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 export function Modal({
   open,
   onClose,
@@ -36,26 +39,38 @@ export function Modal({
   const descId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
+  // Keep latest onClose without re-running the focus trap on every parent render.
+  // Inline onClose callbacks used to re-fire the effect on each keystroke, stealing
+  // focus from inputs via previouslyFocused.current?.focus() in the cleanup.
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     if (!open) return;
+
     previouslyFocused.current = document.activeElement as HTMLElement | null;
     const panel = panelRef.current;
-    const focusable = panel?.querySelectorAll<HTMLElement>(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-    );
-    focusable?.[0]?.focus();
+
+    // Defer initial focus so controlled inputs have mounted with current values.
+    const focusTimer = window.setTimeout(() => {
+      const focusable = panel?.querySelectorAll<HTMLElement>(FOCUSABLE);
+      const firstField = panel?.querySelector<HTMLElement>(
+        "input:not([disabled]), select:not([disabled]), textarea:not([disabled])",
+      );
+      (firstField ?? focusable?.[0])?.focus();
+    }, 0);
 
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
         e.preventDefault();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (e.key !== "Tab" || !panel) return;
-      const nodes = panel.querySelectorAll<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-      );
+      const nodes = panel.querySelectorAll<HTMLElement>(FOCUSABLE);
       if (nodes.length === 0) return;
       const first = nodes[0]!;
       const last = nodes[nodes.length - 1]!;
@@ -73,21 +88,23 @@ export function Modal({
     document.body.style.overflow = "hidden";
 
     return () => {
+      window.clearTimeout(focusTimer);
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = prevOverflow;
       previouslyFocused.current?.focus();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center p-4 sm:items-center">
-      <button
-        type="button"
-        aria-label="Close dialog"
-        className="absolute inset-0 bg-[var(--overlay)] animate-overlay-in"
-        onClick={onClose}
+      {/* Backdrop: explicit z-0 so the panel (z-10) always receives pointer events */}
+      <div
+        role="presentation"
+        aria-hidden="true"
+        className="absolute inset-0 z-0 bg-[var(--overlay)] animate-overlay-in"
+        onClick={() => onCloseRef.current()}
       />
       <div
         ref={panelRef}
@@ -117,7 +134,7 @@ export function Modal({
           <Button
             variant="ghost"
             size="sm"
-            onClick={onClose}
+            onClick={() => onCloseRef.current()}
             aria-label="Close"
             className="!rounded-full !px-2.5 shrink-0"
           >

@@ -150,16 +150,11 @@ export default function FamilyPlannerPage() {
   }
 
   return (
-    <div className="space-y-8">
-      <Link href="/family/dashboard">
-        <Button variant="ghost" size="sm">
-          ← Family
-        </Button>
-      </Link>
-
+    <div className="page-stack">
       <PageHeader
+        compact
         title="Weekly planner"
-        description="Draft → request approval → approve. Students can request revision."
+        description="Draft → request approval → approve."
       />
 
       {students.length === 0 ? (

@@ -73,8 +73,9 @@ export default function UpdatesPage() {
           .length ?? 0);
 
   return (
-    <div className="space-y-8">
+    <div className="page-stack">
       <PageHeader
+        compact
         eyebrow="Product"
         title="What's new"
         description="Product upgrades and platform changes."
@@ -108,7 +109,11 @@ export default function UpdatesPage() {
                 <div className="flex flex-wrap items-baseline gap-2">
                   <h2 className="font-display text-lg font-semibold">{u.title}</h2>
                   {isNew && <Badge tone="accent">New</Badge>}
-                  {u.version && <Badge tone="neutral">v{u.version}</Badge>}
+                  {u.version && (
+                    <Badge tone="neutral">
+                      v{u.version.replace(/^v/i, "")}
+                    </Badge>
+                  )}
                 </div>
                 <p className="mt-2 text-sm text-[var(--muted)]">{u.summary}</p>
                 <div className="mt-4 rounded-[var(--radius-md)] bg-[var(--surface-2)] p-4">

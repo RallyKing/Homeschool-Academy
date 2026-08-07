@@ -175,13 +175,14 @@ export default function AlertsPage() {
   const unread = alerts.filter((a) => a.readAt === undefined).length;
 
   return (
-    <div className="space-y-8">
+    <div className="page-stack">
       <PageHeader
+        compact
         title="Alerts"
         description={
           role === "student"
-            ? "New assignments, schedule updates, and notes for you."
-            : "Family activity: student requests, completions, and reminders."
+            ? "Assignments, schedule updates, and notes."
+            : "Family activity and reminders."
         }
         actions={
           <>
@@ -205,17 +206,17 @@ export default function AlertsPage() {
 
       <Message tone="error">{error}</Message>
 
-      <Section title="Inbox">
+      <Section>
         {alerts.length === 0 ? (
           <EmptyState>No alerts yet.</EmptyState>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-1">
             {alerts.map((alert) => {
               const unreadItem = alert.readAt === undefined;
               return (
                 <div
                   key={alert._id}
-                  className={`list-row ${unreadItem ? "border-[var(--warning)]/25 bg-[var(--warning-soft)]" : ""}`}
+                  className={`list-row list-row-dense ${unreadItem ? "border-[var(--warning)]/25 bg-[var(--warning-soft)]" : ""}`}
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
@@ -230,13 +231,15 @@ export default function AlertsPage() {
                     <button
                       type="button"
                       onClick={() => void onOpen(alert._id, alert.href)}
-                      className="mt-2 text-left font-display text-base font-semibold tracking-tight text-[var(--foreground)] hover:text-[var(--accent)]"
+                      className="mt-1 text-left text-sm font-semibold tracking-tight text-[var(--foreground)] hover:text-[var(--accent)]"
                     >
                       {alert.title}
                     </button>
-                    <p className="mt-0.5 text-sm text-[var(--muted)]">{alert.body}</p>
+                    <p className="mt-0.5 line-clamp-2 text-xs text-[var(--muted)]">
+                      {alert.body}
+                    </p>
                   </div>
-                  <div className="flex shrink-0 flex-wrap gap-1.5">
+                  <div className="flex shrink-0 flex-wrap gap-1">
                     {unreadItem && (
                       <Button
                         variant="ghost"
@@ -248,7 +251,7 @@ export default function AlertsPage() {
                           })
                         }
                       >
-                        Mark read
+                        Read
                       </Button>
                     )}
                     <Button

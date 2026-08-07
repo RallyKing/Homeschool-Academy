@@ -1,7 +1,11 @@
-import { getAuthUserId } from "@convex-dev/auth/server";
+﻿import { getAuthUserId } from "@convex-dev/auth/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { deleteAlertsForFamily, deleteAlertsForStudent } from "./alerts";
+import {
+  deleteGamificationForStudent,
+  deleteRewardsForFamily,
+} from "./gamificationCore";
 
 type Ctx = QueryCtx | MutationCtx;
 
@@ -116,7 +120,7 @@ export async function requireStudentFamilyAccess(
 
 /**
  * Parent (or superAdmin) may view the app as a student in their family.
- * Does not switch auth sessions — caller remains the parent user.
+ * Does not switch auth sessions â€” caller remains the parent user.
  */
 export async function assertParentOfStudent(
   ctx: Ctx,
@@ -330,6 +334,7 @@ export async function deleteStudentData(
   studentId: Id<"students">,
 ): Promise<void> {
   await deleteAlertsForStudent(ctx, studentId);
+  await deleteGamificationForStudent(ctx, studentId);
 
   const student = await ctx.db.get("students", studentId);
 
@@ -378,6 +383,7 @@ export async function deleteFamilyCascade(
   }
 
   await deleteAlertsForFamily(ctx, familyId);
+  await deleteRewardsForFamily(ctx, familyId);
 
   const courses = await ctx.db
     .query("courses")

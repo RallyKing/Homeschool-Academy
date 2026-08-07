@@ -1,4 +1,4 @@
-﻿import { v } from "convex/values";
+import { v } from "convex/values";
 
 export const roleValidator = v.union(
   v.literal("superAdmin"),
@@ -118,6 +118,10 @@ export const alertTypeValidator = v.union(
   v.literal("schedule_item_added"),
   v.literal("course_assigned"),
   v.literal("assignment_new"),
+  v.literal("chore_assigned"),
+  v.literal("chore_completed"),
+  v.literal("reward_redeemed"),
+  v.literal("accolade_awarded"),
   v.literal("general"),
 );
 

@@ -7,7 +7,7 @@ import { api } from "../../../../../convex/_generated/api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
 import { StudentProgressCharts } from "@/components/StudentProgressCharts";
 import { StudentAvatar } from "@/components/StudentAvatar";
-import { Button, PageHeader, Card } from "@/components/ui";
+import { Button, PageHeader, Card, Section, Badge, EmptyState } from "@/components/ui";
 
 export default function StudentProgressDashboardPage({
   params,
@@ -18,6 +18,14 @@ export default function StudentProgressDashboardPage({
   const studentId = rawId as Id<"students">;
 
   const student = useQuery(api.students.get, { studentId });
+  const gamification = useQuery(api.gamification.getStudentProfile, {
+    studentId,
+  });
+  const badges = useQuery(api.gamification.listStudentBadges, { studentId });
+  const accolades = useQuery(api.gamification.listAccolades, {
+    studentId,
+    limit: 8,
+  });
 
   if (student === undefined) {
     return <p className="text-sm text-[var(--muted)]">Loading…</p>;
@@ -80,6 +88,61 @@ export default function StudentProgressDashboardPage({
           </div>
         </div>
       </div>
+
+      {gamification?.profile ? (
+        <Section title="Gamification">
+          <div className="list-row">
+            <div>
+              <p className="font-medium">
+                Level {gamification.profile.level} · {gamification.levelTitle}
+              </p>
+              <p className="text-sm text-[var(--muted)]">
+                {gamification.profile.xp} XP · {gamification.profile.points}{" "}
+                points · {gamification.profile.stars} stars ·{" "}
+                {gamification.profile.currentStreak}d streak
+              </p>
+            </div>
+            <Link href="/family/rewards">
+              <Button size="sm" variant="secondary">
+                Rewards
+              </Button>
+            </Link>
+          </div>
+        </Section>
+      ) : null}
+
+      <Section title="Badges">
+        {!badges || badges.length === 0 ? (
+          <EmptyState>No badges earned yet.</EmptyState>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {badges.map(({ badge, earned }) => (
+              <Badge key={earned._id} tone="accent">
+                {badge.title}
+              </Badge>
+            ))}
+          </div>
+        )}
+      </Section>
+
+      <Section title="Accolades">
+        {!accolades || accolades.length === 0 ? (
+          <EmptyState>No accolades yet.</EmptyState>
+        ) : (
+          <div className="space-y-2">
+            {accolades.map((a) => (
+              <div key={a._id} className="list-row">
+                <div>
+                  <p className="font-medium">{a.title}</p>
+                  {a.message ? (
+                    <p className="text-sm text-[var(--muted)]">{a.message}</p>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Section>
 
       <Card padding="lg">
         <StudentProgressCharts

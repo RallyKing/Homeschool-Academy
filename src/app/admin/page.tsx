@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, Suspense, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
@@ -18,11 +18,17 @@ import {
   Message,
   Row,
   Col,
+  Tabs,
+  TabPanel,
 } from "@/components/ui";
+import { usePageTab } from "@/hooks/usePageTab";
 
 type SubjectCategory = "stem" | "humanities" | "life" | "applied";
 
-export default function AdminPage() {
+const ADMIN_TABS = ["overview", "subjects", "orgs", "users"] as const;
+
+function AdminInner() {
+  const [tab, setTab] = usePageTab(ADMIN_TABS, "overview");
   const user = useQuery(api.users.current);
   const overview = useQuery(
     api.admin.overview,
@@ -141,30 +147,21 @@ export default function AdminPage() {
     <div className="flex flex-wrap gap-2">
       <Link href="/admin/product-updates">
         <Button variant="secondary" size="sm">
-          Product updates
+          Updates
         </Button>
       </Link>
       <Link href="/admin/knowledge-base">
         <Button variant="secondary" size="sm">
-          Knowledge base
-        </Button>
-      </Link>
-      <Link href="/updates">
-        <Button variant="ghost" size="sm">
-          Updates feed
-        </Button>
-      </Link>
-      <Link href="/help">
-        <Button variant="ghost" size="sm">
-          Help
+          KB
         </Button>
       </Link>
     </div>
   );
 
   return (
-    <div className="space-y-8">
+    <div className="page-stack">
       <PageHeader
+        compact
         eyebrow="Platform"
         title="God Mode"
         description="Platform overview and administration."
@@ -173,184 +170,219 @@ export default function AdminPage() {
 
       <Message tone={messageTone}>{message}</Message>
 
-      {overview && (
-        <>
-          <Row gap="md">
-            {(
-              [
-                ["Users", overview.userCount],
-                ["Families", overview.familyCount],
-                ["Academies", overview.academyCount],
-                ["Students", overview.studentCount],
-                ["Courses", overview.courseCount],
-                ["Logs", overview.logCount],
-                ["Subjects", overview.subjectCount],
-              ] as const
-            ).map(([label, count]) => (
-              <Col key={label} span={6} md={4} lg={3}>
-                <Card padding="sm" className="text-center">
-                  <p className="text-xs font-medium uppercase tracking-wide text-[var(--muted)]">
-                    {label}
-                  </p>
-                  <p className="mt-1 font-display text-2xl font-semibold">{count}</p>
-                </Card>
-              </Col>
-            ))}
-          </Row>
+      <Tabs
+        tabs={[
+          { id: "overview", label: "Overview" },
+          { id: "subjects", label: "Subjects", count: subjects?.length },
+          { id: "orgs", label: "Orgs" },
+          { id: "users", label: "Users", count: users?.length },
+        ]}
+        value={tab}
+        onChange={setTab}
+      />
 
-          <Card padding="sm">
-            <p className="text-sm text-[var(--muted)]">
-              Roles — admin {overview.usersByRole.superAdmin}, parent{" "}
-              {overview.usersByRole.parent}, teacher {overview.usersByRole.teacher},
-              student {overview.usersByRole.student}, unset{" "}
-              {overview.usersByRole.unset}
-            </p>
-          </Card>
-        </>
-      )}
-
-      <Section
-        title="Subjects"
-        action={
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() =>
-                void seedSubjects()
-                  .then((r) =>
-                    notify(
-                      `Subjects: ${r.created} created / ${r.total} total`,
-                      "success",
-                    ),
-                  )
-                  .catch((err) =>
-                    notify(err instanceof Error ? err.message : "Failed", "error"),
-                  )
-              }
-            >
-              Seed subjects
-            </Button>
-            <Button size="sm" onClick={openCreateSubject}>
-              Add subject
-            </Button>
-          </div>
-        }
-      >
-        {subjects === undefined ? (
-          <p className="text-sm text-[var(--muted)]">Loading…</p>
-        ) : subjects.length === 0 ? (
-          <EmptyState>No subjects yet.</EmptyState>
+      <TabPanel id="overview" active={tab === "overview"}>
+        {overview ? (
+          <>
+            <Row gap="md">
+              {(
+                [
+                  ["Users", overview.userCount],
+                  ["Families", overview.familyCount],
+                  ["Academies", overview.academyCount],
+                  ["Students", overview.studentCount],
+                  ["Courses", overview.courseCount],
+                  ["Logs", overview.logCount],
+                  ["Subjects", overview.subjectCount],
+                ] as const
+              ).map(([label, count]) => (
+                <Col key={label} span={6} md={4} lg={3}>
+                  <Card padding="sm" className="text-center">
+                    <p className="text-xs font-medium uppercase tracking-wide text-[var(--muted)]">
+                      {label}
+                    </p>
+                    <p className="mt-1 font-display text-2xl font-semibold">
+                      {count}
+                    </p>
+                  </Card>
+                </Col>
+              ))}
+            </Row>
+            <Card padding="sm">
+              <p className="text-sm text-[var(--muted)]">
+                Roles — admin {overview.usersByRole.superAdmin}, parent{" "}
+                {overview.usersByRole.parent}, teacher{" "}
+                {overview.usersByRole.teacher}, student{" "}
+                {overview.usersByRole.student}, unset{" "}
+                {overview.usersByRole.unset}
+              </p>
+            </Card>
+          </>
         ) : (
-          <div className="space-y-2">
-            {subjects.map((s) => (
-              <div key={s._id} className="list-row">
-                <div>
-                  <span className="font-medium">{s.name}</span>
-                  <Badge tone="neutral" className="ml-2">
-                    {s.category}
-                  </Badge>
+          <p className="text-sm text-[var(--muted)]">Loading overview…</p>
+        )}
+      </TabPanel>
+
+      <TabPanel id="subjects" active={tab === "subjects"}>
+        <Section
+          title="Subjects"
+          action={
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() =>
+                  void seedSubjects()
+                    .then((r) =>
+                      notify(
+                        `Subjects: ${r.created} created / ${r.total} total`,
+                        "success",
+                      ),
+                    )
+                    .catch((err) =>
+                      notify(
+                        err instanceof Error ? err.message : "Failed",
+                        "error",
+                      ),
+                    )
+                }
+              >
+                Seed subjects
+              </Button>
+              <Button size="sm" onClick={openCreateSubject}>
+                Add subject
+              </Button>
+            </div>
+          }
+        >
+          {subjects === undefined ? (
+            <p className="text-sm text-[var(--muted)]">Loading…</p>
+          ) : subjects.length === 0 ? (
+            <EmptyState>No subjects yet.</EmptyState>
+          ) : (
+            <div className="space-y-1.5">
+              {subjects.map((s) => (
+                <div key={s._id} className="list-row list-row-dense">
+                  <div>
+                    <span className="font-medium">{s.name}</span>
+                    <Badge tone="neutral" className="ml-2">
+                      {s.category}
+                    </Badge>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => openEditSubject(s)}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      onClick={() => {
+                        if (!window.confirm(`Delete subject "${s.name}"?`)) {
+                          return;
+                        }
+                        void removeSubject({ subjectId: s._id })
+                          .then(() => notify("Subject deleted.", "success"))
+                          .catch((err) =>
+                            notify(
+                              err instanceof Error ? err.message : "Failed",
+                              "error",
+                            ),
+                          );
+                      }}
+                    >
+                      Delete
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex gap-2">
-                  <Button variant="ghost" size="sm" onClick={() => openEditSubject(s)}>
-                    Edit
-                  </Button>
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    onClick={() => {
-                      if (!window.confirm(`Delete subject "${s.name}"?`)) {
-                        return;
+              ))}
+            </div>
+          )}
+        </Section>
+      </TabPanel>
+
+      <TabPanel id="orgs" active={tab === "orgs"}>
+        <Row gap="lg">
+          <Col span={12} md={6}>
+            <Section title="Families">
+              {families === undefined ? (
+                <p className="text-sm text-[var(--muted)]">Loading…</p>
+              ) : families.length === 0 ? (
+                <EmptyState>None</EmptyState>
+              ) : (
+                <div className="space-y-1.5">
+                  {families.map((f) => (
+                    <div key={f._id} className="list-row list-row-dense">
+                      <span className="font-medium">{f.name}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Section>
+          </Col>
+          <Col span={12} md={6}>
+            <Section title="Academies">
+              {academies === undefined ? (
+                <p className="text-sm text-[var(--muted)]">Loading…</p>
+              ) : academies.length === 0 ? (
+                <EmptyState>None</EmptyState>
+              ) : (
+                <div className="space-y-1.5">
+                  {academies.map((a) => (
+                    <div key={a._id} className="list-row list-row-dense">
+                      <span className="font-medium">{a.name}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Section>
+          </Col>
+        </Row>
+      </TabPanel>
+
+      <TabPanel id="users" active={tab === "users"}>
+        <Section title="Users">
+          {users === undefined ? (
+            <p className="text-sm text-[var(--muted)]">Loading…</p>
+          ) : (
+            <div className="space-y-1.5">
+              {users.map((u) => (
+                <div key={u._id} className="list-row list-row-dense">
+                  <div className="min-w-0">
+                    <span className="font-medium">
+                      {u.email ?? u.name ?? u._id}
+                    </span>
+                    <Badge tone="neutral" className="ml-2">
+                      {u.role ?? "unset"}
+                    </Badge>
+                  </div>
+                  {u.role !== "superAdmin" && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() =>
+                        void promote({ userId: u._id as Id<"users"> })
+                          .then(() => notify(`Promoted ${u.email}`, "success"))
+                          .catch((err) =>
+                            notify(
+                              err instanceof Error ? err.message : "Failed",
+                              "error",
+                            ),
+                          )
                       }
-                      void removeSubject({ subjectId: s._id })
-                        .then(() => notify("Subject deleted.", "success"))
-                        .catch((err) =>
-                          notify(err instanceof Error ? err.message : "Failed", "error"),
-                        );
-                    }}
-                  >
-                    Delete
-                  </Button>
+                    >
+                      Promote
+                    </Button>
+                  )}
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </Section>
-
-      <Row gap="lg">
-        <Col span={12} md={6}>
-          <Section title="Families">
-            {families === undefined ? (
-              <p className="text-sm text-[var(--muted)]">Loading…</p>
-            ) : families.length === 0 ? (
-              <EmptyState>None</EmptyState>
-            ) : (
-              <div className="space-y-2">
-                {families.map((f) => (
-                  <div key={f._id} className="list-row">
-                    <span className="font-medium">{f.name}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Section>
-        </Col>
-
-        <Col span={12} md={6}>
-          <Section title="Academies">
-            {academies === undefined ? (
-              <p className="text-sm text-[var(--muted)]">Loading…</p>
-            ) : academies.length === 0 ? (
-              <EmptyState>None</EmptyState>
-            ) : (
-              <div className="space-y-2">
-                {academies.map((a) => (
-                  <div key={a._id} className="list-row">
-                    <span className="font-medium">{a.name}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Section>
-        </Col>
-      </Row>
-
-      <Section title="Users">
-        {users === undefined ? (
-          <p className="text-sm text-[var(--muted)]">Loading…</p>
-        ) : (
-          <div className="space-y-2">
-            {users.map((u) => (
-              <div key={u._id} className="list-row">
-                <div className="min-w-0">
-                  <span className="font-medium">
-                    {u.email ?? u.name ?? u._id}
-                  </span>
-                  <Badge tone="neutral" className="ml-2">
-                    {u.role ?? "unset"}
-                  </Badge>
-                </div>
-                {u.role !== "superAdmin" && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() =>
-                      void promote({ userId: u._id as Id<"users"> })
-                        .then(() => notify(`Promoted ${u.email}`, "success"))
-                        .catch((err) =>
-                          notify(err instanceof Error ? err.message : "Failed", "error"),
-                        )
-                    }
-                  >
-                    Promote
-                  </Button>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </Section>
+              ))}
+            </div>
+          )}
+        </Section>
+      </TabPanel>
 
       <Modal
         open={subjectModalOpen}
@@ -358,7 +390,10 @@ export default function AdminPage() {
         title={editSubjectId ? "Edit subject" : "Add subject"}
         footer={
           <>
-            <Button variant="secondary" onClick={() => setSubjectModalOpen(false)}>
+            <Button
+              variant="secondary"
+              onClick={() => setSubjectModalOpen(false)}
+            >
               Cancel
             </Button>
             <Button type="submit" form="subject-form">
@@ -367,7 +402,11 @@ export default function AdminPage() {
           </>
         }
       >
-        <form id="subject-form" onSubmit={(e) => void onSubjectSubmit(e)} className="space-y-4">
+        <form
+          id="subject-form"
+          onSubmit={(e) => void onSubjectSubmit(e)}
+          className="space-y-4"
+        >
           <Input
             label="Subject name"
             placeholder="Subject name"
@@ -378,7 +417,9 @@ export default function AdminPage() {
           <Select
             label="Category"
             value={subjectCategory}
-            onChange={(e) => setSubjectCategory(e.target.value as SubjectCategory)}
+            onChange={(e) =>
+              setSubjectCategory(e.target.value as SubjectCategory)
+            }
           >
             <option value="stem">STEM</option>
             <option value="humanities">Humanities</option>
@@ -388,5 +429,13 @@ export default function AdminPage() {
         </form>
       </Modal>
     </div>
+  );
+}
+
+export default function AdminPage() {
+  return (
+    <Suspense fallback={<p className="text-sm text-[var(--muted)]">Loading…</p>}>
+      <AdminInner />
+    </Suspense>
   );
 }

@@ -9,6 +9,10 @@ export type AlertType =
   | "schedule_item_added"
   | "course_assigned"
   | "assignment_new"
+  | "chore_assigned"
+  | "chore_completed"
+  | "reward_redeemed"
+  | "accolade_awarded"
   | "general";
 
 export type AlertRecipientType = "user" | "family" | "student";
