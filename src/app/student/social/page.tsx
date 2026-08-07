@@ -15,6 +15,7 @@ import { StudentAvatar } from "@/components/StudentAvatar";
 import { FamilyWallFeed } from "@/components/FamilyWallFeed";
 import { useViewAsStudentId } from "@/hooks/useViewAsStudentId";
 import { withViewAs } from "@/lib/viewAs";
+import { localIsoDate, localWeekStart } from "@/lib/dates";
 import { usePageTab } from "@/hooks/usePageTab";
 import {
   Badge,
@@ -34,15 +35,8 @@ const CHEER_TABS = ["wall", "inbox", "send", "stickers", "customize"] as const;
 
 type CheerKind = "encourage" | "motivate" | "congratulate" | "sticker";
 
-function isoDate(d: Date) {
-  return d.toISOString().slice(0, 10);
-}
-
 function weekStartToday() {
-  const now = new Date();
-  const start = new Date(now);
-  start.setDate(now.getDate() - now.getDay());
-  return { today: isoDate(now), weekStart: isoDate(start) };
+  return { today: localIsoDate(), weekStart: localWeekStart() };
 }
 
 function formatWhen(ms: number): string {

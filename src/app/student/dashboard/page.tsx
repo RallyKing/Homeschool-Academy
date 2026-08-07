@@ -10,8 +10,10 @@ import { StudentAvatar } from "@/components/StudentAvatar";
 import { StudentPhotoEditor } from "@/components/StudentPhotoEditor";
 import { StudentGamificationPanel } from "@/components/StudentGamificationPanel";
 import { CourseAssistPanel } from "@/components/CourseAssistPanel";
+import { FamilyWallFeed } from "@/components/FamilyWallFeed";
 import { useViewAsStudentId } from "@/hooks/useViewAsStudentId";
 import { withViewAs } from "@/lib/viewAs";
+import { localWeekRange } from "@/lib/dates";
 import { usePageTab } from "@/hooks/usePageTab";
 import {
   Button,
@@ -29,23 +31,8 @@ import {
   TabPanel,
 } from "@/components/ui";
 
-function isoDate(d: Date) {
-  return d.toISOString().slice(0, 10);
-}
-
 function weekRange() {
-  const now = new Date();
-  const day = now.getDay();
-  const start = new Date(now);
-  start.setDate(now.getDate() - day);
-  const end = new Date(start);
-  end.setDate(start.getDate() + 6);
-  return {
-    weekStart: isoDate(start),
-    weekEnd: isoDate(end),
-    today: isoDate(now),
-    dayOfWeek: day,
-  };
+  return localWeekRange();
 }
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -287,6 +274,12 @@ function StudentDashboardInner() {
       />
 
       <TabPanel id="home" active={tab === "home"}>
+        <FamilyWallFeed
+          familyId={profile.familyId}
+          viewerStudentId={profile._id}
+          canCompose
+        />
+
         <Row gap="md">
           <Col span={12} lg={6}>
             <Section
@@ -334,7 +327,11 @@ function StudentDashboardInner() {
                       <Button
                         size="sm"
                         onClick={() =>
-                          void markDone({ choreId: c._id, today: week.today })
+                          void markDone({
+                            choreId: c._id,
+                            today: week.today,
+                            weekStart: week.weekStart,
+                          })
                             .then(() => notify("Chore complete!", "success"))
                             .catch((err) =>
                               notify(
@@ -370,33 +367,6 @@ function StudentDashboardInner() {
             </Button>
           </Link>
         </div>
-
-        {recentCheers && recentCheers.length > 0 ? (
-          <Section
-            title="Recent cheers"
-            description="Warm notes from siblings — not a leaderboard."
-            action={
-              <Link href={withViewAs("/student/social", viewAsStudentId)}>
-                <Button variant="ghost" size="sm">
-                  Cheer Hub
-                </Button>
-              </Link>
-            }
-          >
-            <div className="space-y-1.5">
-              {recentCheers.map(({ message: m, fromName, stickerEmoji }) => (
-                <div key={m._id} className="list-row list-row-dense">
-                  <span className="min-w-0 text-sm">
-                    <span className="font-medium">{fromName}</span>
-                    {stickerEmoji ? ` ${stickerEmoji}` : ""}
-                    {m.body ? ` — ${m.body}` : ""}
-                  </span>
-                  <Badge tone="success">{m.kind}</Badge>
-                </div>
-              ))}
-            </div>
-          </Section>
-        ) : null}
       </TabPanel>
 
       <TabPanel id="quests" active={tab === "quests"}>
@@ -607,7 +577,11 @@ function StudentDashboardInner() {
                     <Button
                       size="sm"
                       onClick={() =>
-                        void markDone({ choreId: c._id, today: week.today })
+                        void markDone({
+                          choreId: c._id,
+                          today: week.today,
+                          weekStart: week.weekStart,
+                        })
                           .then(() => notify("Chore complete!", "success"))
                           .catch((err) =>
                             notify(

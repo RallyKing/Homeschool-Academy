@@ -15,16 +15,10 @@ import {
 } from "@/components/ui";
 import { useViewAsStudentId } from "@/hooks/useViewAsStudentId";
 import { withViewAs } from "@/lib/viewAs";
-
-function isoDate(d: Date) {
-  return d.toISOString().slice(0, 10);
-}
+import { localIsoDate, localWeekStart } from "@/lib/dates";
 
 function weekRange() {
-  const now = new Date();
-  const start = new Date(now);
-  start.setDate(now.getDate() - now.getDay());
-  return { weekStart: isoDate(start), today: isoDate(now) };
+  return { weekStart: localWeekStart(), today: localIsoDate() };
 }
 
 function StudentChoresInner() {

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, Suspense, use, useState } from "react";
+import { FormEvent, Suspense, use, useEffect, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
@@ -9,6 +9,7 @@ import { ParentStudentLogsPanel } from "@/components/ParentStudentLogsPanel";
 import { StudentAvatar } from "@/components/StudentAvatar";
 import { StudentPhotoEditor } from "@/components/StudentPhotoEditor";
 import { usePageTab } from "@/hooks/usePageTab";
+import { localIsoDate, localWeekRange } from "@/lib/dates";
 import {
   Badge,
   Button,
@@ -38,18 +39,9 @@ const CONTROL_TABS = [
 
 type Recurrence = "once" | "daily" | "weekly";
 
-function isoDate(d: Date) {
-  return d.toISOString().slice(0, 10);
-}
-
 function weekRange() {
-  const now = new Date();
-  const day = now.getDay();
-  const start = new Date(now);
-  start.setDate(now.getDate() - day);
-  const end = new Date(start);
-  end.setDate(start.getDate() + 6);
-  return { weekStart: isoDate(start), weekEnd: isoDate(end) };
+  const { weekStart, weekEnd } = localWeekRange();
+  return { weekStart, weekEnd };
 }
 
 function formatWhen(ms: number): string {
@@ -175,7 +167,7 @@ function ProfileTab({
       </Section>
 
       {gamification?.profile ? (
-        <Section title="Gamification (read-only)">
+        <Section title="Progress snapshot">
           <div className="list-row">
             <div>
               <p className="font-medium">
@@ -188,7 +180,7 @@ function ProfileTab({
               </p>
             </div>
             <Button size="sm" variant="secondary" onClick={onGoRewards}>
-              Grant rewards
+              Edit rewards
             </Button>
           </div>
         </Section>
@@ -247,15 +239,23 @@ function StudentControlInner({ studentId }: { studentId: Id<"students"> }) {
   });
   const moderateDelete = useMutation(api.social.moderateDeleteMessage);
 
-  // Rewards / accolades
+  // Rewards / accolades / progress
   const accolades = useQuery(api.gamification.listAccolades, {
     studentId,
     limit: 30,
   });
+  const studentBadges = useQuery(api.gamification.listStudentBadges, {
+    studentId,
+  });
+  const allBadges = useQuery(api.gamification.listBadges, {});
   const createAccolade = useMutation(api.gamification.createAccolade);
   const updateAccolade = useMutation(api.gamification.updateAccolade);
   const removeAccolade = useMutation(api.gamification.removeAccolade);
   const grantBonus = useMutation(api.gamification.grantBonus);
+  const adminAdjust = useMutation(api.gamification.adminAdjust);
+  const grantManualBadge = useMutation(api.gamification.grantManualBadge);
+  const revokeStudentBadge = useMutation(api.gamification.revokeStudentBadge);
+  const seedBadges = useMutation(api.gamification.seedBadges);
   const [accoladeOpen, setAccoladeOpen] = useState(false);
   const [editAccoladeId, setEditAccoladeId] = useState<Id<"accolades"> | null>(
     null,
@@ -265,6 +265,26 @@ function StudentControlInner({ studentId }: { studentId: Id<"students"> }) {
   const [bonusPts, setBonusPts] = useState("10");
   const [bonusStars, setBonusStars] = useState("1");
   const [bonusXp, setBonusXp] = useState("0");
+  const [adjXp, setAdjXp] = useState("");
+  const [adjPoints, setAdjPoints] = useState("");
+  const [adjStars, setAdjStars] = useState("");
+  const [adjStreak, setAdjStreak] = useState("");
+  const [adjFreezes, setAdjFreezes] = useState("");
+  const [adjWeeklyXp, setAdjWeeklyXp] = useState("");
+  const [grantBadgeId, setGrantBadgeId] = useState("");
+  const [progressHydrated, setProgressHydrated] = useState(false);
+
+  useEffect(() => {
+    if (!gamification?.profile || progressHydrated) return;
+    const p = gamification.profile;
+    setAdjXp(String(p.xp));
+    setAdjPoints(String(p.points));
+    setAdjStars(String(p.stars));
+    setAdjStreak(String(p.currentStreak));
+    setAdjFreezes(String(p.streakFreezes));
+    setAdjWeeklyXp(String(p.weeklyXp));
+    setProgressHydrated(true);
+  }, [gamification, progressHydrated]);
 
   async function onSaveChore(e: FormEvent) {
     e.preventDefault();
@@ -364,7 +384,7 @@ function StudentControlInner({ studentId }: { studentId: Id<"students"> }) {
           studentId,
           title: accoladeTitle.trim(),
           message: accoladeMessage.trim() || undefined,
-          today: isoDate(new Date()),
+          today: localIsoDate(),
         });
         notify("Accolade granted.");
       }
@@ -382,9 +402,40 @@ function StudentControlInner({ studentId }: { studentId: Id<"students"> }) {
         points: Number(bonusPts) || 0,
         stars: Number(bonusStars) || 0,
         xp: Number(bonusXp) || 0,
-        today: isoDate(new Date()),
+        today: localIsoDate(),
       });
       notify("Bonus granted.");
+      setProgressHydrated(false);
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Failed", "error");
+    }
+  }
+
+  async function onSaveProgress(e: FormEvent) {
+    e.preventDefault();
+    if (
+      !window.confirm(
+        "Overwrite XP, points, stars, streak, and weekly XP for this student?",
+      )
+    ) {
+      return;
+    }
+    try {
+      const result = await adminAdjust({
+        studentId,
+        xp: Number(adjXp) || 0,
+        points: Number(adjPoints) || 0,
+        stars: Number(adjStars) || 0,
+        currentStreak: Number(adjStreak) || 0,
+        streakFreezes: Number(adjFreezes) || 0,
+        weeklyXp: Number(adjWeeklyXp) || 0,
+        today: localIsoDate(),
+        reason: "family_control_center",
+      });
+      notify(
+        `Progress saved — Level ${result.level} from ${result.xp} XP.`,
+      );
+      setProgressHydrated(false);
     } catch (err) {
       notify(err instanceof Error ? err.message : "Failed", "error");
     }
@@ -454,7 +505,7 @@ function StudentControlInner({ studentId }: { studentId: Id<"students"> }) {
           { id: "chores", label: "Chores" },
           { id: "plan", label: "Plan" },
           { id: "social", label: "Social" },
-          { id: "rewards", label: "Rewards" },
+          { id: "rewards", label: "Rewards / Progress" },
         ]}
         value={tab}
         onChange={setTab}
@@ -765,7 +816,210 @@ function StudentControlInner({ studentId }: { studentId: Id<"students"> }) {
       </TabPanel>
 
       <TabPanel id="rewards" active={tab === "rewards"}>
-        <Section title="Accolades">
+        <Section
+          title="Edit progress"
+          description="Set absolute XP, points, stars, streak, freezes, and this week’s XP. Level recalculates from XP (100 XP per level)."
+        >
+          <Card>
+            <form
+              onSubmit={(e) => void onSaveProgress(e)}
+              className="space-y-4"
+            >
+              <Row gap="sm">
+                <Col span={12} md={4}>
+                  <Input
+                    label="Total XP"
+                    type="number"
+                    min={0}
+                    value={adjXp}
+                    onChange={(e) => setAdjXp(e.target.value)}
+                  />
+                </Col>
+                <Col span={12} md={4}>
+                  <Input
+                    label="Points"
+                    type="number"
+                    min={0}
+                    value={adjPoints}
+                    onChange={(e) => setAdjPoints(e.target.value)}
+                  />
+                </Col>
+                <Col span={12} md={4}>
+                  <Input
+                    label="Stars"
+                    type="number"
+                    min={0}
+                    value={adjStars}
+                    onChange={(e) => setAdjStars(e.target.value)}
+                  />
+                </Col>
+              </Row>
+              <Row gap="sm">
+                <Col span={12} md={4}>
+                  <Input
+                    label="Current streak"
+                    type="number"
+                    min={0}
+                    value={adjStreak}
+                    onChange={(e) => setAdjStreak(e.target.value)}
+                  />
+                </Col>
+                <Col span={12} md={4}>
+                  <Input
+                    label="Streak freezes"
+                    type="number"
+                    min={0}
+                    max={3}
+                    value={adjFreezes}
+                    onChange={(e) => setAdjFreezes(e.target.value)}
+                  />
+                </Col>
+                <Col span={12} md={4}>
+                  <Input
+                    label="This week’s XP"
+                    type="number"
+                    min={0}
+                    value={adjWeeklyXp}
+                    onChange={(e) => setAdjWeeklyXp(e.target.value)}
+                  />
+                </Col>
+              </Row>
+              {gamification?.profile ? (
+                <p className="text-sm text-[var(--muted)]">
+                  Live: Level {gamification.profile.level} ·{" "}
+                  {gamification.levelTitle} · {gamification.profile.weeklyXp}{" "}
+                  weekly XP
+                  {gamification.profile.weekStart
+                    ? ` (week of ${gamification.profile.weekStart})`
+                    : ""}
+                </p>
+              ) : null}
+              <Button type="submit">Save progress</Button>
+            </form>
+          </Card>
+        </Section>
+
+        <Section title="Badges">
+          <div className="mb-4 flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() =>
+                void seedBadges({})
+                  .then((n) =>
+                    notify(
+                      n > 0
+                        ? `Seeded ${n} system badge${n === 1 ? "" : "s"}.`
+                        : "Badge catalog already seeded.",
+                    ),
+                  )
+                  .catch((err) =>
+                    notify(
+                      err instanceof Error ? err.message : "Failed",
+                      "error",
+                    ),
+                  )
+              }
+            >
+              Seed badge catalog
+            </Button>
+          </div>
+          <Card className="mb-4">
+            <form
+              className="flex flex-wrap items-end gap-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!grantBadgeId) return;
+                void grantManualBadge({
+                  studentId,
+                  badgeId: grantBadgeId as Id<"badges">,
+                  today: localIsoDate(),
+                })
+                  .then(() => {
+                    notify("Badge granted.");
+                    setGrantBadgeId("");
+                    setProgressHydrated(false);
+                  })
+                  .catch((err) =>
+                    notify(
+                      err instanceof Error ? err.message : "Failed",
+                      "error",
+                    ),
+                  );
+              }}
+            >
+              <div className="min-w-[12rem] flex-1">
+                <Select
+                  label="Grant badge"
+                  value={grantBadgeId}
+                  onChange={(e) => setGrantBadgeId(e.target.value)}
+                >
+                  <option value="">Choose a badge…</option>
+                  {(allBadges ?? [])
+                    .filter(
+                      (b) =>
+                        !(studentBadges ?? []).some(
+                          (sb) => sb.badge._id === b._id,
+                        ),
+                    )
+                    .map((b) => (
+                      <option key={b._id} value={b._id}>
+                        {b.title}
+                      </option>
+                    ))}
+                </Select>
+              </div>
+              <Button type="submit" size="sm" disabled={!grantBadgeId}>
+                Grant
+              </Button>
+            </form>
+          </Card>
+          {!studentBadges ? (
+            <p className="text-sm text-[var(--muted)]">Loading…</p>
+          ) : studentBadges.length === 0 ? (
+            <EmptyState>No badges earned yet.</EmptyState>
+          ) : (
+            <ul className="space-y-2">
+              {studentBadges.map(({ earned, badge }) => (
+                <li key={earned._id} className="list-row">
+                  <div>
+                    <p className="font-medium">{badge.title}</p>
+                    <p className="text-sm text-[var(--muted)]">
+                      {badge.description}
+                    </p>
+                  </div>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={() => {
+                      if (!window.confirm(`Revoke “${badge.title}”?`)) return;
+                      void revokeStudentBadge({
+                        studentBadgeId: earned._id,
+                      })
+                        .then(() => {
+                          notify("Badge revoked.");
+                          setProgressHydrated(false);
+                        })
+                        .catch((err) =>
+                          notify(
+                            err instanceof Error ? err.message : "Failed",
+                            "error",
+                          ),
+                        );
+                    }}
+                  >
+                    Revoke
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Section>
+
+        <Section
+          title="Accolades"
+          description="Shows on the student’s Quests tab. Grant here to fill an empty accolades list."
+        >
           <div className="mb-4">
             <Button size="sm" onClick={openCreateAccolade}>
               Grant accolade
@@ -774,7 +1028,9 @@ function StudentControlInner({ studentId }: { studentId: Id<"students"> }) {
           {!accolades ? (
             <p className="text-sm text-[var(--muted)]">Loading…</p>
           ) : accolades.length === 0 ? (
-            <EmptyState>No accolades yet.</EmptyState>
+            <EmptyState>
+              No accolades yet — grant one above; it appears on Quests immediately.
+            </EmptyState>
           ) : (
             <ul className="space-y-2">
               {accolades.map((a) => (
@@ -819,7 +1075,7 @@ function StudentControlInner({ studentId }: { studentId: Id<"students"> }) {
 
         <Section
           title="Grant bonus"
-          description="Add points, stars, or XP without creating an accolade."
+          description="Add points, stars, or XP without creating an accolade. Counts toward this week’s XP."
         >
           <Card>
             <form onSubmit={(e) => void onGrantBonus(e)} className="space-y-4">

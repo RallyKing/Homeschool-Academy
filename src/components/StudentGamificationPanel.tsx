@@ -6,6 +6,7 @@ import Link from "next/link";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { withViewAs } from "@/lib/viewAs";
+import { localIsoDate, localWeekStart } from "@/lib/dates";
 import { StudentAvatar } from "@/components/StudentAvatar";
 import {
   Badge,
@@ -16,17 +17,6 @@ import {
   Col,
   Section,
 } from "@/components/ui";
-
-function isoToday() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function weekStartSunday() {
-  const now = new Date();
-  const start = new Date(now);
-  start.setDate(now.getDate() - now.getDay());
-  return start.toISOString().slice(0, 10);
-}
 
 const ICON_LABEL: Record<string, string> = {
   spark: "✦",
@@ -55,8 +45,8 @@ export function StudentGamificationPanel({
   viewAsStudentId?: string | null;
   celebrateLevel?: number | null;
 }) {
-  const today = isoToday();
-  const weekStart = weekStartSunday();
+  const today = localIsoDate();
+  const weekStart = localWeekStart();
 
   const ensureProfile = useMutation(api.gamification.ensureStudentProfile);
   const ensureQuests = useMutation(api.gamification.ensureQuestsForToday);
@@ -96,14 +86,14 @@ export function StudentGamificationPanel({
     bootstrapStarted.current = true;
     void (async () => {
       try {
-        await ensureProfile({ studentId });
+        await ensureProfile({ studentId, weekStart });
         await ensureQuests({ studentId, today });
         await seedBadges({});
       } catch {
         /* parents seed; students may lack role for seed */
       }
     })();
-  }, [ensureProfile, ensureQuests, seedBadges, studentId, today]);
+  }, [ensureProfile, ensureQuests, seedBadges, studentId, today, weekStart]);
 
   const g = profile?.profile;
   const choresHref = withViewAs("/student/chores", viewAsStudentId);
@@ -262,7 +252,10 @@ export function StudentGamificationPanel({
         <Col span={12} lg={6}>
           <Section title="Recent accolades">
             {!accolades || accolades.length === 0 ? (
-              <EmptyState>Parents can shout you out here.</EmptyState>
+              <EmptyState>
+                No accolades yet — a parent can grant one from Manage → this
+                student → Rewards.
+              </EmptyState>
             ) : (
               <div className="space-y-2">
                 {accolades.map((a) => (
@@ -281,7 +274,10 @@ export function StudentGamificationPanel({
         </Col>
 
         <Col span={12} lg={6}>
-          <Section title="Family leaderboard" description="This week’s XP">
+          <Section
+            title="Family leaderboard"
+            description="This week’s XP (totals stay on your level bar)"
+          >
             {!leaderboard || leaderboard.length === 0 ? (
               <EmptyState>No rankings yet.</EmptyState>
             ) : (

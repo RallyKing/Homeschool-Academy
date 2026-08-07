@@ -16,6 +16,8 @@ import {
   getOrCreateGamification,
   levelFromXp,
   levelTitle,
+  syncWeeklyBucket,
+  weekStartFromDate,
   XP_PER_LEVEL,
   xpProgressInLevel,
 } from "./lib/gamificationCore";
@@ -312,15 +314,21 @@ export const getStudentProfile = query({
 });
 
 export const ensureStudentProfile = mutation({
-  args: { studentId: v.id("students") },
+  args: {
+    studentId: v.id("students"),
+    weekStart: v.optional(v.string()),
+  },
   returns: v.id("studentGamification"),
   handler: async (ctx, args) => {
     const { student } = await requireStudentFamilyAccess(ctx, args.studentId);
-    const profile = await getOrCreateGamification(
+    let profile = await getOrCreateGamification(
       ctx,
       student._id,
       student.familyId,
     );
+    if (args.weekStart && /^\d{4}-\d{2}-\d{2}$/.test(args.weekStart)) {
+      profile = await syncWeeklyBucket(ctx, profile, args.weekStart);
+    }
     return profile._id;
   },
 });
@@ -406,13 +414,13 @@ export const familyLeaderboard = query({
         .query("studentGamification")
         .withIndex("by_student", (q) => q.eq("studentId", s._id))
         .unique();
-      const sameWeek = g?.weekStart === args.weekStart;
+      const showWeekly = !g?.weekStart || g.weekStart === args.weekStart;
       rows.push({
         studentId: s._id,
         displayName: s.displayName,
-        weeklyXp: sameWeek ? (g?.weeklyXp ?? 0) : 0,
-        weeklyPoints: sameWeek ? (g?.weeklyPoints ?? 0) : 0,
-        weeklyStars: sameWeek ? (g?.weeklyStars ?? 0) : 0,
+        weeklyXp: showWeekly ? (g?.weeklyXp ?? 0) : 0,
+        weeklyPoints: showWeekly ? (g?.weeklyPoints ?? 0) : 0,
+        weeklyStars: showWeekly ? (g?.weeklyStars ?? 0) : 0,
         xp: g?.xp ?? 0,
         points: g?.points ?? 0,
         stars: g?.stars ?? 0,
@@ -641,6 +649,7 @@ export const grantManualBadge = mutation({
   args: {
     studentId: v.id("students"),
     badgeId: v.id("badges"),
+    today: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -662,7 +671,7 @@ export const grantManualBadge = mutation({
       .unique();
     if (existing) throw new Error("Student already has this badge");
 
-    await ctx.db.insert("studentBadges", {
+    const earnedId = await ctx.db.insert("studentBadges", {
       studentId: args.studentId,
       badgeId: args.badgeId,
       earnedAt: Date.now(),
@@ -670,17 +679,80 @@ export const grantManualBadge = mutation({
     });
 
     if ((badge.xpReward ?? 0) > 0 || (badge.pointsReward ?? 0) > 0) {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = args.today ?? new Date().toISOString().slice(0, 10);
       await awardProgress(ctx, {
         studentId: student._id,
         familyId: student.familyId,
         today,
+        weekStart: weekStartFromDate(today),
         xp: badge.xpReward ?? 0,
         points: badge.pointsReward ?? 0,
         stars: 0,
         source: "badge",
+        sourceId: earnedId,
         skipQuests: true,
         skipStreak: true,
+      });
+    }
+
+    await createFeedPost(ctx, {
+      familyId: student.familyId,
+      type: "badge_earned",
+      actorStudentId: student._id,
+      title: `${student.displayName} earned a badge: ${badge.title}`,
+      body: badge.description,
+      href: "/student/dashboard?tab=quests",
+      sourceTable: "studentBadges",
+      sourceId: earnedId,
+      createdByUserId: user._id,
+    });
+
+    return null;
+  },
+});
+
+export const revokeStudentBadge = mutation({
+  args: {
+    studentBadgeId: v.id("studentBadges"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const earned = await ctx.db.get("studentBadges", args.studentBadgeId);
+    if (!earned) throw new Error("Badge award not found");
+    const { user, student } = await requireStudentFamilyAccess(
+      ctx,
+      earned.studentId,
+    );
+    if (user.role !== "parent" && user.role !== "superAdmin") {
+      throw new Error("Only parents can revoke badges");
+    }
+
+    const badge = await ctx.db.get("badges", earned.badgeId);
+    await ctx.db.delete("studentBadges", args.studentBadgeId);
+
+    const bx = badge?.xpReward ?? 0;
+    const bp = badge?.pointsReward ?? 0;
+    if (bx > 0 || bp > 0) {
+      const profile = await getOrCreateGamification(
+        ctx,
+        student._id,
+        student.familyId,
+      );
+      const xp = Math.max(0, profile.xp - bx);
+      const points = Math.max(0, profile.points - bp);
+      let weeklyXp = profile.weeklyXp;
+      let weeklyPoints = profile.weeklyPoints;
+      if (profile.weekStart) {
+        weeklyXp = Math.max(0, weeklyXp - bx);
+        weeklyPoints = Math.max(0, weeklyPoints - bp);
+      }
+      await ctx.db.patch("studentGamification", profile._id, {
+        xp,
+        points,
+        level: levelFromXp(xp),
+        weeklyXp,
+        weeklyPoints,
+        updatedAt: Date.now(),
       });
     }
     return null;
@@ -745,10 +817,12 @@ export const createAccolade = mutation({
       studentId: student._id,
       familyId: student.familyId,
       today: args.today,
+      weekStart: weekStartFromDate(args.today),
       xp: 10,
       points,
       stars,
       source: "accolade",
+      sourceId: id,
     });
 
     await alertStudent(ctx, {
@@ -839,16 +913,154 @@ export const grantBonus = mutation({
     if (user.role !== "parent" && user.role !== "superAdmin") {
       throw new Error("Only parents can grant bonuses");
     }
+    const xp = Math.max(0, args.xp ?? 0);
+    const points = Math.max(0, args.points ?? 0);
+    const stars = Math.max(0, args.stars ?? 0);
+    if (xp === 0 && points === 0 && stars === 0) {
+      throw new Error("Grant at least one of XP, points, or stars");
+    }
+    const sourceId = `bonus:${Date.now()}:${student._id}`;
     await awardProgress(ctx, {
       studentId: student._id,
       familyId: student.familyId,
       today: args.today,
-      xp: Math.max(0, args.xp ?? 0),
-      points: Math.max(0, args.points ?? 0),
-      stars: Math.max(0, args.stars ?? 0),
+      weekStart: weekStartFromDate(args.today),
+      xp,
+      points,
+      stars,
       source: "bonus",
+      sourceId,
+      skipStreak: true,
     });
     return null;
+  },
+});
+
+/**
+ * Parent absolute set / adjust for gamification counters.
+ * Writes a bonus ledger entry for the XP/points/stars delta.
+ */
+export const adminAdjust = mutation({
+  args: {
+    studentId: v.id("students"),
+    xp: v.optional(v.number()),
+    points: v.optional(v.number()),
+    stars: v.optional(v.number()),
+    currentStreak: v.optional(v.number()),
+    longestStreak: v.optional(v.number()),
+    streakFreezes: v.optional(v.number()),
+    weeklyXp: v.optional(v.number()),
+    weeklyPoints: v.optional(v.number()),
+    weeklyStars: v.optional(v.number()),
+    today: v.string(),
+    reason: v.optional(v.string()),
+  },
+  returns: v.object({
+    level: v.number(),
+    xp: v.number(),
+    points: v.number(),
+    stars: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    const { user, student } = await requireStudentFamilyAccess(
+      ctx,
+      args.studentId,
+    );
+    if (user.role !== "parent" && user.role !== "superAdmin") {
+      throw new Error("Only parents can adjust progress");
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(args.today)) {
+      throw new Error("today must be YYYY-MM-DD");
+    }
+
+    const profile = await getOrCreateGamification(
+      ctx,
+      student._id,
+      student.familyId,
+    );
+    const weekStart = weekStartFromDate(args.today);
+
+    const nextXp =
+      args.xp !== undefined ? Math.max(0, Math.floor(args.xp)) : profile.xp;
+    const nextPoints =
+      args.points !== undefined
+        ? Math.max(0, Math.floor(args.points))
+        : profile.points;
+    const nextStars =
+      args.stars !== undefined
+        ? Math.max(0, Math.floor(args.stars))
+        : profile.stars;
+    const nextStreak =
+      args.currentStreak !== undefined
+        ? Math.max(0, Math.floor(args.currentStreak))
+        : profile.currentStreak;
+    const nextLongest =
+      args.longestStreak !== undefined
+        ? Math.max(0, Math.floor(args.longestStreak))
+        : Math.max(profile.longestStreak, nextStreak);
+    const nextFreezes =
+      args.streakFreezes !== undefined
+        ? Math.min(3, Math.max(0, Math.floor(args.streakFreezes)))
+        : profile.streakFreezes;
+    const nextWeeklyXp =
+      args.weeklyXp !== undefined
+        ? Math.max(0, Math.floor(args.weeklyXp))
+        : profile.weekStart === weekStart
+          ? profile.weeklyXp
+          : 0;
+    const nextWeeklyPoints =
+      args.weeklyPoints !== undefined
+        ? Math.max(0, Math.floor(args.weeklyPoints))
+        : profile.weekStart === weekStart
+          ? profile.weeklyPoints
+          : 0;
+    const nextWeeklyStars =
+      args.weeklyStars !== undefined
+        ? Math.max(0, Math.floor(args.weeklyStars))
+        : profile.weekStart === weekStart
+          ? profile.weeklyStars
+          : 0;
+
+    const level = levelFromXp(nextXp);
+    const dx = nextXp - profile.xp;
+    const dp = nextPoints - profile.points;
+    const ds = nextStars - profile.stars;
+
+    await ctx.db.patch("studentGamification", profile._id, {
+      xp: nextXp,
+      points: nextPoints,
+      stars: nextStars,
+      level,
+      currentStreak: nextStreak,
+      longestStreak: Math.max(nextLongest, nextStreak),
+      streakFreezes: nextFreezes,
+      weeklyXp: nextWeeklyXp,
+      weeklyPoints: nextWeeklyPoints,
+      weeklyStars: nextWeeklyStars,
+      weekStart,
+      updatedAt: Date.now(),
+    });
+
+    // Ledger stores absolute deltas (may be negative) for audit.
+    await ctx.db.insert("gamificationAwards", {
+      studentId: student._id,
+      familyId: student.familyId,
+      sourceType: "bonus",
+      sourceId: `admin:${Date.now()}:${student._id}:${(args.reason ?? "adjust").slice(0, 40)}`,
+      xp: dx,
+      points: dp,
+      stars: ds,
+      awardDate: args.today,
+      weekStart,
+      createdAt: Date.now(),
+    });
+
+    return {
+      level,
+      xp: nextXp,
+      points: nextPoints,
+      stars: nextStars,
+    };
   },
 });
 
