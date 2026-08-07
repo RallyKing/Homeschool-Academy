@@ -1,6 +1,6 @@
 # Homeschool Academy — Companion & Tracker
 
-Multi-tenant companion for homeschool families: students, courses, weekly planners, learning ledger, academy subscriptions, and AI guardrails.
+Multi-tenant companion for homeschool families: students, courses, weekly planners, learning ledger, academy subscriptions, and modular AI capabilities (guardrails, badge craft, course assist, family insights).
 
 **Live:** [https://homeschool-academy.vercel.app](https://homeschool-academy.vercel.app)  
 **Repo:** [https://github.com/RallyKing/Homeschool-Academy](https://github.com/RallyKing/Homeschool-Academy)
@@ -34,8 +34,10 @@ npm run dev
 3. **Courses** → create native or external (Zearn-style) course; seed subjects if needed
 4. **Planner** → draft week → add items → request approval → approve
 5. **Ledger** → log time → verify as parent
-6. **Progress** / **AI guardrails** for activity + demo assistant
+6. **Progress** / **AI** (`/family/ai`) for activity + modular AI (guardrails, badges, course help, insights)
 7. Optional: `/admin` → bootstrap SuperAdmin once
+
+See [docs/ai-capabilities.md](docs/ai-capabilities.md) for the capability registry and how to enable live LLMs.
 
 ## Role URLs
 
@@ -65,4 +67,4 @@ npx convex deploy --yes
 git push origin master   # Vercel auto-deploys
 ```
 
-Set `OPENAI_API_KEY` on the Convex deployment for live LLM guardrails (mock works without it).
+Set `OPENAI_API_KEY` or `AI_GATEWAY_API_KEY` on the Convex deployment for live LLM capabilities (mocks work without keys). See [docs/ai-capabilities.md](docs/ai-capabilities.md).

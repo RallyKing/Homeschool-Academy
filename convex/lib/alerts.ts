@@ -13,6 +13,7 @@ export type AlertType =
   | "chore_completed"
   | "reward_redeemed"
   | "accolade_awarded"
+  | "kudos_received"
   | "general";
 
 export type AlertRecipientType = "user" | "family" | "student";

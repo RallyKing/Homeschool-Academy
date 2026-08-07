@@ -9,6 +9,7 @@ import { StudentProgressCharts } from "@/components/StudentProgressCharts";
 import { StudentAvatar } from "@/components/StudentAvatar";
 import { StudentPhotoEditor } from "@/components/StudentPhotoEditor";
 import { StudentGamificationPanel } from "@/components/StudentGamificationPanel";
+import { CourseAssistPanel } from "@/components/CourseAssistPanel";
 import { useViewAsStudentId } from "@/hooks/useViewAsStudentId";
 import { withViewAs } from "@/lib/viewAs";
 import { usePageTab } from "@/hooks/usePageTab";
@@ -48,7 +49,15 @@ function weekRange() {
 }
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const STUDENT_TABS = ["home", "quests", "plan", "log", "chores", "profile"] as const;
+const STUDENT_TABS = [
+  "home",
+  "quests",
+  "plan",
+  "log",
+  "chores",
+  "cheer",
+  "profile",
+] as const;
 
 type EntryType = "native_completion" | "external_time" | "manual";
 
@@ -112,6 +121,11 @@ function StudentDashboardInner() {
   const openChores = useQuery(
     api.chores.listMine,
     profile ? { studentId: profile._id, status: "todo" } : "skip",
+  );
+
+  const recentCheers = useQuery(
+    api.social.listRecentForStudent,
+    profile ? { studentId: profile._id, limit: 4 } : "skip",
   );
 
   const todayItems =
@@ -261,6 +275,11 @@ function StudentDashboardInner() {
             label: "Chores",
             count: openChores?.length,
           },
+          {
+            id: "cheer",
+            label: "Cheer",
+            count: recentCheers?.length,
+          },
           { id: "profile", label: "Profile" },
         ]}
         value={tab}
@@ -342,12 +361,42 @@ function StudentDashboardInner() {
           <Button variant="secondary" size="sm" onClick={() => setTab("quests")}>
             Quests & rewards
           </Button>
+          <Button variant="secondary" size="sm" onClick={() => setTab("cheer")}>
+            Cheer siblings
+          </Button>
           <Link href={withViewAs("/alerts", viewAsStudentId)}>
             <Button variant="ghost" size="sm">
               Alerts
             </Button>
           </Link>
         </div>
+
+        {recentCheers && recentCheers.length > 0 ? (
+          <Section
+            title="Recent cheers"
+            description="Warm notes from siblings — not a leaderboard."
+            action={
+              <Link href={withViewAs("/student/social", viewAsStudentId)}>
+                <Button variant="ghost" size="sm">
+                  Cheer Hub
+                </Button>
+              </Link>
+            }
+          >
+            <div className="space-y-1.5">
+              {recentCheers.map(({ message: m, fromName, stickerEmoji }) => (
+                <div key={m._id} className="list-row list-row-dense">
+                  <span className="min-w-0 text-sm">
+                    <span className="font-medium">{fromName}</span>
+                    {stickerEmoji ? ` ${stickerEmoji}` : ""}
+                    {m.body ? ` — ${m.body}` : ""}
+                  </span>
+                  <Badge tone="success">{m.kind}</Badge>
+                </div>
+              ))}
+            </div>
+          </Section>
+        ) : null}
       </TabPanel>
 
       <TabPanel id="quests" active={tab === "quests"}>
@@ -445,6 +494,32 @@ function StudentDashboardInner() {
                 </div>
               ))}
             </div>
+          </Section>
+        ) : null}
+
+        {courses && courses.length > 0 ? (
+          <Section
+            title="Course assist"
+            description="Short, on-topic help for one of your courses. Stays within family-safe guidelines."
+          >
+            <div className="mb-3 max-w-md">
+              <Select
+                label="Course"
+                value={courseId || courses[0]?._id || ""}
+                onChange={(e) => setCourseId(e.target.value)}
+              >
+                {courses.map((c) => (
+                  <option key={c._id} value={c._id}>
+                    {c.title}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <CourseAssistPanel
+              studentId={profile._id}
+              courseId={(courseId || courses[0]._id) as Id<"courses">}
+              parentGuardrailContext="Age-appropriate educational help only. Stay on course topic. No cheating. block: dating, weapons, violence"
+            />
           </Section>
         ) : null}
       </TabPanel>
@@ -561,6 +636,39 @@ function StudentDashboardInner() {
                       Skip
                     </Button>
                   </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </Section>
+      </TabPanel>
+
+      <TabPanel id="cheer" active={tab === "cheer"}>
+        <Section
+          title="Encouragement Circle"
+          description="Cheer siblings, send stickers, and unlock themes by giving kindness."
+          action={
+            <Link href={withViewAs("/student/social", viewAsStudentId)}>
+              <Button size="sm">Open Cheer Hub</Button>
+            </Link>
+          }
+        >
+          {!recentCheers ? (
+            <p className="text-sm text-[var(--muted)]">Loading…</p>
+          ) : recentCheers.length === 0 ? (
+            <EmptyState>
+              No cheers yet — open Cheer Hub to encourage a sibling.
+            </EmptyState>
+          ) : (
+            <div className="space-y-1.5">
+              {recentCheers.map(({ message: m, fromName, stickerEmoji }) => (
+                <div key={m._id} className="list-row list-row-dense">
+                  <span className="min-w-0 text-sm">
+                    <span className="font-medium">{fromName}</span>
+                    {stickerEmoji ? ` ${stickerEmoji}` : ""}
+                    {m.body ? ` — ${m.body}` : ""}
+                  </span>
+                  <Badge tone="success">{m.kind}</Badge>
                 </div>
               ))}
             </div>

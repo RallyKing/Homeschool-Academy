@@ -48,6 +48,7 @@ const navByRole: Record<string, NavEntry[]> = {
         label: "Life",
         items: [
           { href: "/family/chores", label: "Chores" },
+          { href: "/family/cheers", label: "Family cheers" },
           { href: "/alerts", label: "Alerts" },
         ],
       },
@@ -77,6 +78,7 @@ const navByRole: Record<string, NavEntry[]> = {
         label: "Life",
         items: [
           { href: "/family/chores", label: "Chores & rewards" },
+          { href: "/family/cheers", label: "Family cheers" },
           { href: "/alerts", label: "Alerts" },
           { href: "/family/academies", label: "Academies" },
         ],
@@ -92,7 +94,17 @@ const navByRole: Record<string, NavEntry[]> = {
   student: [
     { kind: "link", link: { href: "/student/dashboard", label: "Today" } },
     { kind: "link", link: { href: "/student/chores", label: "Chores" } },
-    { kind: "link", link: { href: "/alerts", label: "Alerts" } },
+    {
+      kind: "group",
+      group: {
+        id: "life",
+        label: "Life",
+        items: [
+          { href: "/student/social", label: "Cheer" },
+          { href: "/alerts", label: "Alerts" },
+        ],
+      },
+    },
     { kind: "group", group: accountGroup },
   ],
 };
@@ -100,6 +112,7 @@ const navByRole: Record<string, NavEntry[]> = {
 const viewAsEntries: NavEntry[] = [
   { kind: "link", link: { href: "/student/dashboard", label: "Today" } },
   { kind: "link", link: { href: "/student/chores", label: "Chores" } },
+  { kind: "link", link: { href: "/student/social", label: "Cheer" } },
   { kind: "link", link: { href: "/family/dashboard", label: "Exit preview" } },
 ];
 

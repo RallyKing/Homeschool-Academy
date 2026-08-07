@@ -44,6 +44,11 @@ const typeLabels: Record<string, string> = {
   schedule_item_added: "New item",
   course_assigned: "Course",
   assignment_new: "Assignment",
+  chore_assigned: "Chore",
+  chore_completed: "Chore done",
+  reward_redeemed: "Reward",
+  accolade_awarded: "Accolade",
+  kudos_received: "Cheer",
   general: "General",
 };
 

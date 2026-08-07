@@ -59,7 +59,14 @@ export function daysBetween(a: string, b: string): number {
   return Math.round((db - da) / (24 * 60 * 60 * 1000));
 }
 
-export type AwardSource = "log" | "chore" | "accolade" | "quest" | "badge" | "bonus";
+export type AwardSource =
+  | "log"
+  | "chore"
+  | "accolade"
+  | "quest"
+  | "badge"
+  | "bonus"
+  | "social";
 
 export type AwardResult = {
   xpGained: number;

@@ -6,6 +6,8 @@ import {
   deleteGamificationForStudent,
   deleteRewardsForFamily,
 } from "./gamificationCore";
+import { deleteBadgeProposalsForStudent } from "./aiCore";
+import { deleteSocialForStudent } from "./socialCore";
 
 type Ctx = QueryCtx | MutationCtx;
 
@@ -335,6 +337,8 @@ export async function deleteStudentData(
 ): Promise<void> {
   await deleteAlertsForStudent(ctx, studentId);
   await deleteGamificationForStudent(ctx, studentId);
+  await deleteSocialForStudent(ctx, studentId);
+  await deleteBadgeProposalsForStudent(ctx, studentId);
 
   const student = await ctx.db.get("students", studentId);
 

@@ -253,6 +253,7 @@ export default defineSchema({
       v.literal("chore_completed"),
       v.literal("reward_redeemed"),
       v.literal("accolade_awarded"),
+      v.literal("kudos_received"),
       v.literal("general"),
     ),
     title: v.string(),
@@ -348,10 +349,19 @@ export default defineSchema({
       v.literal("manual"),
     ),
     criteriaValue: v.optional(v.number()),
+    /** Family-scoped custom / AI-crafted badges; omitted for system catalog. */
+    familyId: v.optional(v.id("families")),
+    ageBand: v.optional(v.string()),
+    source: v.optional(
+      v.union(v.literal("system"), v.literal("ai"), v.literal("manual")),
+    ),
+    criteriaSummary: v.optional(v.string()),
     createdAt: v.number(),
   })
     .index("by_key", ["key"])
-    .index("by_criteriaType", ["criteriaType"]),
+    .index("by_criteriaType", ["criteriaType"])
+    .index("by_family", ["familyId"])
+    .index("by_family_and_source", ["familyId", "source"]),
 
   studentBadges: defineTable({
     studentId: v.id("students"),
@@ -362,6 +372,30 @@ export default defineSchema({
     .index("by_student", ["studentId"])
     .index("by_badge", ["badgeId"])
     .index("by_student_and_badge", ["studentId", "badgeId"]),
+
+  /** AI-proposed badges awaiting parent accept/reject (safety gate). */
+  badgeProposals: defineTable({
+    familyId: v.id("families"),
+    studentId: v.id("students"),
+    key: v.string(),
+    title: v.string(),
+    description: v.string(),
+    iconHint: v.string(),
+    criteriaSummary: v.string(),
+    ageBand: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("accepted"),
+      v.literal("rejected"),
+    ),
+    acceptedBadgeId: v.optional(v.id("badges")),
+    createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
+  })
+    .index("by_family", ["familyId"])
+    .index("by_student", ["studentId"])
+    .index("by_family_and_status", ["familyId", "status"])
+    .index("by_student_and_status", ["studentId", "status"]),
 
   accolades: defineTable({
     studentId: v.id("students"),
@@ -458,4 +492,94 @@ export default defineSchema({
     .index("by_student", ["studentId"])
     .index("by_student_and_status", ["studentId", "status"])
     .index("by_family_and_status", ["familyId", "status"]),
+
+  // ── Encouragement Circle (student social — non-competitive) ──
+  socialThreads: defineTable({
+    familyId: v.id("families"),
+    participantStudentIds: v.array(v.id("students")),
+    participantKey: v.string(),
+    updatedAt: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_family", ["familyId"])
+    .index("by_participantKey", ["participantKey"])
+    .index("by_family_and_updatedAt", ["familyId", "updatedAt"]),
+
+  socialMessages: defineTable({
+    threadId: v.id("socialThreads"),
+    familyId: v.id("families"),
+    fromStudentId: v.id("students"),
+    toStudentId: v.id("students"),
+    kind: v.union(
+      v.literal("encourage"),
+      v.literal("motivate"),
+      v.literal("congratulate"),
+      v.literal("sticker"),
+    ),
+    body: v.optional(v.string()),
+    stickerKey: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
+    deletedAt: v.optional(v.number()),
+    deletedBy: v.optional(v.id("users")),
+  })
+    .index("by_thread", ["threadId"])
+    .index("by_thread_and_createdAt", ["threadId", "createdAt"])
+    .index("by_family", ["familyId"])
+    .index("by_family_and_createdAt", ["familyId", "createdAt"])
+    .index("by_from", ["fromStudentId"])
+    .index("by_to", ["toStudentId"])
+    .index("by_to_and_createdAt", ["toStudentId", "createdAt"]),
+
+  stickerPacks: defineTable({
+    packKey: v.string(),
+    title: v.string(),
+    description: v.string(),
+    sortOrder: v.number(),
+    free: v.boolean(),
+    createdAt: v.number(),
+  })
+    .index("by_packKey", ["packKey"])
+    .index("by_sortOrder", ["sortOrder"]),
+
+  stickers: defineTable({
+    packId: v.id("stickerPacks"),
+    stickerKey: v.string(),
+    label: v.string(),
+    emoji: v.string(),
+    sortOrder: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_pack", ["packId"])
+    .index("by_stickerKey", ["stickerKey"]),
+
+  studentSocialStats: defineTable({
+    studentId: v.id("students"),
+    familyId: v.id("families"),
+    kindnessGiven: v.number(),
+    kindnessReceived: v.number(),
+    stickersSent: v.number(),
+    stickersReceived: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_student", ["studentId"])
+    .index("by_family", ["familyId"]),
+
+  studentUnlocks: defineTable({
+    studentId: v.id("students"),
+    unlockKey: v.string(),
+    unlockedAt: v.number(),
+  })
+    .index("by_student", ["studentId"])
+    .index("by_student_and_key", ["studentId", "unlockKey"])
+    .index("by_unlockKey", ["unlockKey"]),
+
+  studentCustomization: defineTable({
+    studentId: v.id("students"),
+    themeKey: v.string(),
+    frameKey: v.string(),
+    bubbleKey: v.string(),
+    unlockedPackIds: v.array(v.string()),
+    updatedAt: v.number(),
+  }).index("by_student", ["studentId"]),
 });

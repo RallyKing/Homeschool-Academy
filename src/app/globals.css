@@ -254,3 +254,246 @@ html {
 .level-up-pulse {
   animation: level-up-pulse 1.4s cubic-bezier(0.22, 1, 0.36, 1);
 }
+
+/* ── Encouragement Circle / Cheer Hub ── */
+.cheer-hub {
+  --cheer-accent: var(--accent);
+  --cheer-soft: var(--accent-soft);
+}
+
+.cheer-theme-sunrise {
+  --cheer-accent: #c2410c;
+  --cheer-soft: rgba(194, 65, 12, 0.1);
+}
+
+.cheer-theme-ocean_calm {
+  --cheer-accent: #0369a1;
+  --cheer-soft: rgba(3, 105, 161, 0.1);
+}
+
+.cheer-theme-meadow {
+  --cheer-accent: #15803d;
+  --cheer-soft: rgba(21, 128, 61, 0.1);
+}
+
+.cheer-banner {
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: linear-gradient(120deg, var(--cheer-soft), transparent 70%);
+  padding: 0.85rem 1.1rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--cheer-accent);
+}
+
+.cheer-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.cheer-stats > div {
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  padding: 0.85rem 1rem;
+  text-align: center;
+  box-shadow: var(--shadow-sm);
+}
+
+.cheer-stat-value {
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--cheer-accent);
+}
+
+.cheer-stat-label {
+  margin-top: 0.15rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.cheer-inbox {
+  display: grid;
+  gap: 1.25rem;
+}
+
+@media (min-width: 900px) {
+  .cheer-inbox {
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  }
+}
+
+.cheer-thread-active {
+  background: var(--cheer-soft) !important;
+}
+
+.cheer-avatar-wrap {
+  display: inline-flex;
+  border-radius: 999px;
+}
+
+.cheer-frame-soft_ring {
+  box-shadow: 0 0 0 2px var(--cheer-accent);
+}
+
+.cheer-frame-golden_halo {
+  box-shadow: 0 0 0 2px #d97706, 0 0 10px rgba(217, 119, 6, 0.35);
+}
+
+.cheer-frame-friendship_wreath {
+  box-shadow: 0 0 0 2px #15803d, 0 0 0 5px rgba(21, 128, 61, 0.15);
+}
+
+.cheer-bubble {
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  padding: 0.75rem 0.9rem;
+  animation: fade-up 0.35s ease both;
+}
+
+.cheer-bubble-mine {
+  border-color: transparent;
+  background: var(--cheer-soft);
+}
+
+.cheer-bubble-soft_cloud {
+  border-radius: 1.25rem 1.25rem 1.25rem 0.5rem;
+}
+
+.cheer-bubble-mine.cheer-bubble-soft_cloud {
+  border-radius: 1.25rem 1.25rem 0.5rem 1.25rem;
+}
+
+.cheer-bubble-sparkle {
+  box-shadow: inset 0 0 0 1px rgba(14, 116, 144, 0.12);
+}
+
+.cheer-sticker-emoji {
+  margin-top: 0.35rem;
+  font-size: 1.75rem;
+  line-height: 1;
+}
+
+.cheer-send-form {
+  display: grid;
+  gap: 1rem;
+  max-width: 36rem;
+}
+
+.cheer-kind-chip,
+.cheer-preset,
+.cheer-sticker-btn,
+.cheer-option {
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  transition: background 0.2s, border-color 0.2s, transform 0.15s;
+}
+
+.cheer-kind-chip {
+  padding: 0.4rem 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  text-transform: capitalize;
+  color: var(--muted);
+}
+
+.cheer-kind-chip:hover,
+.cheer-preset:hover,
+.cheer-sticker-btn:hover:not(:disabled),
+.cheer-option:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+
+.cheer-kind-chip-active {
+  border-color: transparent;
+  background: var(--cheer-soft);
+  color: var(--cheer-accent);
+}
+
+.cheer-preset {
+  padding: 0.35rem 0.65rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+  text-align: left;
+}
+
+.cheer-sticker-btn {
+  display: inline-flex;
+  height: 2.5rem;
+  width: 2.5rem;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+}
+
+.cheer-sticker-btn-active {
+  border-color: var(--cheer-accent);
+  background: var(--cheer-soft);
+  transform: scale(1.06);
+}
+
+.cheer-pack {
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  padding: 1rem;
+}
+
+.cheer-unlock-row {
+  display: flex;
+  gap: 0.75rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  padding: 0.85rem 1rem;
+}
+
+.cheer-progress-track {
+  height: 0.35rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(12, 18, 34, 0.08);
+}
+
+.cheer-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--cheer-accent);
+  transition: width 0.45s ease;
+}
+
+.cheer-option {
+  min-width: 9rem;
+  padding: 0.65rem 0.85rem;
+  text-align: left;
+}
+
+.cheer-option-active {
+  border-color: transparent;
+  background: var(--cheer-soft);
+}
+
+@keyframes cheer-celebrate {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.01);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.cheer-celebrate .cheer-banner {
+  animation: cheer-celebrate 0.8s ease;
+}
+

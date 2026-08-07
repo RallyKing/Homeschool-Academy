@@ -41,6 +41,12 @@ const badgeDocValidator = v.object({
   pointsReward: v.optional(v.number()),
   criteriaType: badgeCriteriaValidator,
   criteriaValue: v.optional(v.number()),
+  familyId: v.optional(v.id("families")),
+  ageBand: v.optional(v.string()),
+  source: v.optional(
+    v.union(v.literal("system"), v.literal("ai"), v.literal("manual")),
+  ),
+  criteriaSummary: v.optional(v.string()),
   createdAt: v.number(),
 });
 
@@ -481,6 +487,12 @@ export const createBadge = mutation({
     pointsReward: v.optional(v.number()),
     criteriaType: badgeCriteriaValidator,
     criteriaValue: v.optional(v.number()),
+    familyId: v.optional(v.id("families")),
+    ageBand: v.optional(v.string()),
+    source: v.optional(
+      v.union(v.literal("system"), v.literal("ai"), v.literal("manual")),
+    ),
+    criteriaSummary: v.optional(v.string()),
   },
   returns: v.id("badges"),
   handler: async (ctx, args) => {
@@ -489,6 +501,10 @@ export const createBadge = mutation({
     if (!key) throw new Error("Badge key is required");
     const title = args.title.trim();
     if (!title) throw new Error("Badge title is required");
+
+    if (args.familyId) {
+      await requireFamilyAccess(ctx, args.familyId);
+    }
 
     const existing = await ctx.db
       .query("badges")
@@ -505,6 +521,10 @@ export const createBadge = mutation({
       pointsReward: args.pointsReward,
       criteriaType: args.criteriaType,
       criteriaValue: args.criteriaValue,
+      familyId: args.familyId,
+      ageBand: args.ageBand,
+      source: args.source ?? (args.familyId ? "manual" : "system"),
+      criteriaSummary: args.criteriaSummary,
       createdAt: Date.now(),
     });
   },
@@ -520,12 +540,17 @@ export const updateBadge = mutation({
     pointsReward: v.optional(v.number()),
     criteriaType: v.optional(badgeCriteriaValidator),
     criteriaValue: v.optional(v.number()),
+    ageBand: v.optional(v.string()),
+    criteriaSummary: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
     await requireRole(ctx, ["superAdmin", "parent"]);
     const badge = await ctx.db.get("badges", args.badgeId);
     if (!badge) throw new Error("Badge not found");
+    if (badge.familyId) {
+      await requireFamilyAccess(ctx, badge.familyId);
+    }
 
     const patch: {
       title?: string;
@@ -535,6 +560,8 @@ export const updateBadge = mutation({
       pointsReward?: number;
       criteriaType?: typeof args.criteriaType;
       criteriaValue?: number;
+      ageBand?: string;
+      criteriaSummary?: string;
     } = {};
     if (args.title !== undefined) {
       const title = args.title.trim();
@@ -551,6 +578,10 @@ export const updateBadge = mutation({
     if (args.criteriaValue !== undefined) {
       patch.criteriaValue = args.criteriaValue;
     }
+    if (args.ageBand !== undefined) patch.ageBand = args.ageBand;
+    if (args.criteriaSummary !== undefined) {
+      patch.criteriaSummary = args.criteriaSummary;
+    }
 
     await ctx.db.patch("badges", args.badgeId, patch);
     return null;
@@ -561,9 +592,15 @@ export const removeBadge = mutation({
   args: { badgeId: v.id("badges") },
   returns: v.null(),
   handler: async (ctx, args) => {
-    await requireRole(ctx, ["superAdmin"]);
+    const user = await requireRole(ctx, ["superAdmin", "parent"]);
     const badge = await ctx.db.get("badges", args.badgeId);
     if (!badge) throw new Error("Badge not found");
+
+    if (badge.familyId) {
+      await requireFamilyAccess(ctx, badge.familyId);
+    } else if (user.role !== "superAdmin") {
+      throw new Error("Only superAdmin can remove system badges");
+    }
 
     const earned = await ctx.db
       .query("studentBadges")
