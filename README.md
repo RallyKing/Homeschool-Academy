@@ -31,21 +31,21 @@ npm run dev
 
 Sign-in includes **Forgot password?** → `/reset-password`.
 
-1. User enters email (`flow=reset`) → Convex Auth emails an 8-digit OTP (via Resend)
-2. User enters code + new password (`flow=reset-verification`) → password updated and signed in
+1. User enters **email**, **new password**, and **confirm password**
+2. Convex action `passwordReset.setPasswordDirect` updates the password hash (no OTP/email)
+3. Client signs in with the new password and redirects home
 
-### Email env (Convex deployment)
-
-Set on the Convex deployment (Dashboard → Settings → Environment Variables, or CLI):
+### Env (Convex deployment)
 
 | Variable | Required | Purpose |
 |----------|----------|---------|
-| `AUTH_RESEND_KEY` | Yes (for email) | Resend API key (preferred name) |
-| `RESEND_API_KEY` | Alias | Same key if you prefer this name |
-| `AUTH_EMAIL_FROM` | No | From address; default `Homeschool Academy <onboarding@resend.dev>` |
+| `AUTH_ALLOW_DIRECT_PASSWORD_RESET` | **Yes for prod** | Set to `true` to allow reset-by-email without OTP |
 | `SITE_URL` | Yes (auth) | App origin, e.g. `https://homeschool-academy.vercel.app` |
+| `AUTH_RESEND_KEY` | Optional | Legacy OTP email path (Resend) |
+| `RESEND_API_KEY` | Alias | Same key if you prefer this name |
+| `AUTH_EMAIL_FROM` | No | From address for OTP emails |
 
-Without `AUTH_RESEND_KEY` / `RESEND_API_KEY`, reset UI still works: the OTP is **logged in Convex logs** so you can complete a reset in development or as an emergency recovery path. Production should set a Resend key and a verified `AUTH_EMAIL_FROM` domain.
+Direct reset is also allowed automatically when Resend is **not** configured (dev / emergency). Turn `AUTH_ALLOW_DIRECT_PASSWORD_RESET` off once a proper email OTP (or authenticated change-password) flow is in place — open reset-by-email-only is not ideal long-term.
 
 ## Demo path (parent)
 

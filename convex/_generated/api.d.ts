@@ -39,6 +39,7 @@ import type * as lib_slugs from "../lib/slugs.js";
 import type * as lib_socialCore from "../lib/socialCore.js";
 import type * as lib_validators from "../lib/validators.js";
 import type * as logs from "../logs.js";
+import type * as passwordReset from "../passwordReset.js";
 import type * as productUpdates from "../productUpdates.js";
 import type * as schedules from "../schedules.js";
 import type * as social from "../social.js";
@@ -84,6 +85,7 @@ declare const fullApi: ApiFromModules<{
   "lib/socialCore": typeof lib_socialCore;
   "lib/validators": typeof lib_validators;
   logs: typeof logs;
+  passwordReset: typeof passwordReset;
   productUpdates: typeof productUpdates;
   schedules: typeof schedules;
   social: typeof social;
