@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
@@ -269,11 +270,11 @@ export function ReadAlongPlayer({
   useEffect(() => {
     if (vocabOpen) return;
     currentWordElRef.current?.scrollIntoView({
-      behavior: "smooth",
-      block: "center",
+      behavior: "auto",
+      block: "nearest",
       inline: "nearest",
     });
-  }, [effectiveIndex, vocabOpen]);
+  }, [highlightIndex, vocabOpen]);
 
   const notify = useCallback(
     (text: string, tone: "info" | "error" | "success" = "info") => {
@@ -693,7 +694,11 @@ export function ReadAlongPlayer({
     speakStoryFrom(words, from, {
       rate: ttsSettings.rate,
       voiceURI: ttsSettings.voiceURI,
-      onWord: (i) => setNarrationIndex(i),
+      onWord: (i) => {
+        flushSync(() => {
+          setNarrationIndex(i);
+        });
+      },
       onEnd: () => {
         setNarrating(false);
         resumeMicAfterHelp();

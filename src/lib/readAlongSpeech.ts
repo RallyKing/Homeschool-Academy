@@ -33,6 +33,118 @@ export function wordIndexAtChar(text: string, charIndex: number): number {
   return atWordStart ? completed : Math.max(0, completed - 1);
 }
 
+const TTS_MS_PER_WORD_BASE = 150;
+const TTS_MS_PER_SPOKEN_CHAR = 68;
+const TTS_MS_SENTENCE_PAUSE = 260;
+const TTS_MIN_WORD_MS = 90;
+const TTS_AUDIO_START_SLACK_MS = 60;
+const TTS_ONSTART_FALLBACK_MS = 1200;
+
+function spokenCharCount(token: string): number {
+  return token.replace(/[^a-zA-Z0-9']/g, "").length;
+}
+
+export function estimatedWordDurationMs(token: string, rate: number): number {
+  const r = clampTtsRate(rate);
+  if (isSkippableToken(token)) return 0;
+  const chars = Math.max(1, spokenCharCount(token));
+  const punctPause = /[.!?]["'”’)]*$/.test(token.trim())
+    ? TTS_MS_SENTENCE_PAUSE
+    : 0;
+  return Math.max(
+    TTS_MIN_WORD_MS,
+    Math.round((TTS_MS_PER_WORD_BASE + chars * TTS_MS_PER_SPOKEN_CHAR + punctPause) / r),
+  );
+}
+
+export function estimatedWordStartTimesMs(
+  tokens: string[],
+  rate: number,
+): number[] {
+  const starts: number[] = [];
+  let t = 0;
+  for (const token of tokens) {
+    starts.push(t);
+    t += estimatedWordDurationMs(token, rate);
+  }
+  return starts;
+}
+
+export function recalibrateStartTimesMs(
+  tokens: string[],
+  rate: number,
+  currentIndex: number,
+  elapsedMs: number,
+): number[] {
+  const starts = estimatedWordStartTimesMs(tokens, rate);
+  const expected = starts[currentIndex] ?? 0;
+  const delta = elapsedMs - expected;
+  return starts.map((s) => Math.max(0, s + delta));
+}
+
+export function currentSpokenWordIndex(
+  tokens: string[],
+  index: number,
+): number {
+  if (tokens.length === 0) return 0;
+  let i = Math.max(0, Math.min(index, tokens.length - 1));
+  if (!isSkippableToken(tokens[i]!)) return i;
+  for (let j = i + 1; j < tokens.length; j++) {
+    if (!isSkippableToken(tokens[j]!)) return j;
+  }
+  for (let j = i - 1; j >= 0; j--) {
+    if (!isSkippableToken(tokens[j]!)) return j;
+  }
+  return i;
+}
+
+export function wordClockTargetIndex(args: {
+  elapsedMs: number;
+  startTimesMs: number[];
+  lastIndex: number;
+  boundaryIndex?: number | null;
+}): number {
+  const times = args.startTimesMs;
+  const n = times.length;
+  if (n === 0) return 0;
+
+  let clock = 0;
+  for (let i = 0; i < n; i++) {
+    if ((times[i] ?? Infinity) <= args.elapsedMs) clock = i;
+    else break;
+  }
+
+  let target = clock;
+  if (args.boundaryIndex != null && Number.isFinite(args.boundaryIndex)) {
+    const b = Math.max(0, Math.min(Math.floor(args.boundaryIndex), n - 1));
+    target = Math.min(b, clock + 1);
+  } else {
+    const last = Math.max(0, args.lastIndex);
+    if (last <= clock) target = Math.max(target, last);
+  }
+
+  return Math.max(0, Math.min(target, n - 1));
+}
+
+export function isPlausibleWordBoundary(args: {
+  charIndex: number;
+  text: string;
+  lastCharIndex: number | null;
+  clockIndex: number;
+}): boolean {
+  const { charIndex, text, lastCharIndex, clockIndex } = args;
+  if (!Number.isFinite(charIndex) || charIndex < 0 || charIndex > text.length) {
+    return false;
+  }
+  if (lastCharIndex != null && charIndex === lastCharIndex) {
+    return false;
+  }
+  const idx = wordIndexAtChar(text, charIndex);
+  if (idx > clockIndex + 1) return false;
+  if (idx < clockIndex) return false;
+  return true;
+}
+
 function levenshtein(a: string, b: string): number {
   if (a === b) return 0;
   if (a.length === 0) return b.length;
@@ -770,7 +882,7 @@ export function ttsSupported(): boolean {
 let speakGeneration = 0;
 let storyReadGen = 0;
 let highlightTimer: number | null = null;
-let highlightInterval: number | null = null;
+let wordClockRaf: number | null = null;
 let speakDelayTimer: number | null = null;
 let resumeKeepAlive: number | null = null;
 /** Chrome GCs utterances that have no JS reference, cutting speech after the first word. */
@@ -784,9 +896,9 @@ function clearHighlightTimers() {
     window.clearTimeout(highlightTimer);
     highlightTimer = null;
   }
-  if (highlightInterval != null) {
-    window.clearInterval(highlightInterval);
-    highlightInterval = null;
+  if (wordClockRaf != null) {
+    window.cancelAnimationFrame(wordClockRaf);
+    wordClockRaf = null;
   }
 }
 
@@ -804,8 +916,16 @@ function clearResumeKeepAlive() {
   }
 }
 
+function isAppleTouchDevice(): boolean {
+  if (typeof navigator === "undefined") return false;
+  if (/iPad|iPhone|iPod/i.test(navigator.userAgent)) return true;
+  return navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
+}
+
 function startResumeKeepAlive() {
   clearResumeKeepAlive();
+  // iOS pause()/resume() hitch and desync the word clock; Chrome Windows needs this.
+  if (isAppleTouchDevice()) return;
   resumeKeepAlive = window.setInterval(() => {
     if (!window.speechSynthesis.speaking) {
       clearResumeKeepAlive();
@@ -862,40 +982,114 @@ export function speakText(
     };
 
     if (opts?.onBoundaryWord) {
-      let boundaryFired = false;
-      const words = splitHighlightWords(text);
+      const tokens = splitHighlightWords(text);
+      let startTimes = estimatedWordStartTimesMs(tokens, utterance.rate);
+      let lastIndex = -1;
+      let lastSpoken = -1;
+      let lastCharIndex: number | null = null;
+      let startedAt: number | null = null;
+      let pauseStartedAt: number | null = null;
+
+      const emit = (idx: number) => {
+        if (tokens.length === 0) return;
+        const clamped = Math.max(0, Math.min(idx, tokens.length - 1));
+        lastIndex = clamped;
+        const spoken = currentSpokenWordIndex(tokens, clamped);
+        if (spoken === lastSpoken) return;
+        lastSpoken = spoken;
+        opts.onBoundaryWord?.(spoken);
+      };
+
+      const syncPause = () => {
+        if (typeof window === "undefined") return;
+        const paused = window.speechSynthesis.paused;
+        if (paused && pauseStartedAt == null) {
+          pauseStartedAt = performance.now();
+        } else if (!paused && pauseStartedAt != null && startedAt != null) {
+          startedAt += performance.now() - pauseStartedAt;
+          pauseStartedAt = null;
+        }
+      };
+
+      const elapsedNow = () => {
+        if (startedAt == null) return 0;
+        syncPause();
+        if (pauseStartedAt != null) {
+          return Math.max(0, pauseStartedAt - startedAt);
+        }
+        return Math.max(0, performance.now() - startedAt);
+      };
+
+      const tick = () => {
+        if (gen !== speakGeneration) return;
+        if (startedAt == null) return;
+        syncPause();
+        if (pauseStartedAt != null) {
+          wordClockRaf = window.requestAnimationFrame(tick);
+          return;
+        }
+        const target = wordClockTargetIndex({
+          elapsedMs: elapsedNow(),
+          startTimesMs: startTimes,
+          lastIndex: Math.max(0, lastIndex),
+        });
+        emit(target);
+        wordClockRaf = window.requestAnimationFrame(tick);
+      };
+
+      const ensureStarted = () => {
+        if (gen !== speakGeneration || startedAt != null || tokens.length === 0) {
+          return;
+        }
+        startedAt = performance.now() + TTS_AUDIO_START_SLACK_MS;
+        emit(0);
+        wordClockRaf = window.requestAnimationFrame(tick);
+      };
+
+      utterance.onstart = () => {
+        if (gen !== speakGeneration) return;
+        ensureStarted();
+      };
+
       utterance.onboundary = (event: SpeechSynthesisEvent) => {
         if (gen !== speakGeneration) return;
         if (event.name && event.name !== "word") return;
-        boundaryFired = true;
-        clearHighlightTimers();
-        const idx = Math.min(
-          words.length - 1,
-          wordIndexAtChar(text, event.charIndex),
-        );
-        if (idx >= 0) opts.onBoundaryWord?.(idx);
-      };
-
-      const msPerWord = Math.max(220, Math.round(1000 / (2.6 * utterance.rate)));
-      highlightTimer = window.setTimeout(() => {
-        if (gen !== speakGeneration || boundaryFired || words.length === 0) {
+        ensureStarted();
+        if (startedAt == null) return;
+        const elapsed = elapsedNow();
+        const clockIndex = wordClockTargetIndex({
+          elapsedMs: elapsed,
+          startTimesMs: startTimes,
+          lastIndex: Math.max(0, lastIndex),
+        });
+        if (
+          !isPlausibleWordBoundary({
+            charIndex: event.charIndex,
+            text,
+            lastCharIndex,
+            clockIndex,
+          })
+        ) {
           return;
         }
-        let i = 0;
-        opts.onBoundaryWord?.(0);
-        highlightInterval = window.setInterval(() => {
-          if (gen !== speakGeneration) {
-            clearHighlightTimers();
-            return;
-          }
-          i += 1;
-          if (i >= words.length) {
-            clearHighlightTimers();
-            return;
-          }
-          opts.onBoundaryWord?.(i);
-        }, msPerWord);
-      }, 280);
+        lastCharIndex = event.charIndex;
+        const idx = Math.min(
+          tokens.length - 1,
+          Math.max(0, wordIndexAtChar(text, event.charIndex)),
+        );
+        startTimes = recalibrateStartTimesMs(
+          tokens,
+          utterance.rate,
+          idx,
+          elapsed,
+        );
+        emit(idx);
+      };
+
+      highlightTimer = window.setTimeout(() => {
+        if (gen !== speakGeneration || startedAt != null) return;
+        ensureStarted();
+      }, TTS_ONSTART_FALLBACK_MS);
     }
 
     utterance.onend = onDone;
@@ -939,7 +1133,9 @@ export function speakStoryFrom(
       interrupt: false,
       onBoundaryWord: (localIdx) => {
         if (gen !== storyReadGen) return;
-        opts?.onWord?.(chunk.startStoryIndex + localIdx);
+        const tokens = splitHighlightWords(chunk.text);
+        const spoken = currentSpokenWordIndex(tokens, localIdx);
+        opts?.onWord?.(chunk.startStoryIndex + spoken);
       },
       onEnd: () => speakChunk(c + 1),
     });

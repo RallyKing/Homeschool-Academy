@@ -30,6 +30,12 @@ import {
   ttsRateForPreset,
   unmatchedTranscript,
   wordsMatch,
+  wordIndexAtChar,
+  estimatedWordDurationMs,
+  estimatedWordStartTimesMs,
+  wordClockTargetIndex,
+  isPlausibleWordBoundary,
+  currentSpokenWordIndex,
 } from "./readAlongSpeech.ts";
 
 describe("read-along mic session", () => {
@@ -462,5 +468,120 @@ describe("read-aloud TTS settings", () => {
     assert.equal(chunks.some((chunk) => chunk.text === "Found."), false);
     assert.match(chunks[0]?.text ?? "", /Joyella Found A Tin Can/);
     assert.equal(/\w\.\s+\w/.test(chunks[0]?.text ?? ""), false);
+  });
+});
+
+describe("read-to-me highlight word clock", () => {
+  it("maps charIndex onto the spoken word, keeping trailing punctuation on that word", () => {
+    const text = "Joyella found a tin.";
+    assert.equal(wordIndexAtChar(text, 0), 0);
+    assert.equal(wordIndexAtChar(text, text.indexOf("found")), 1);
+    assert.equal(wordIndexAtChar(text, text.indexOf("tin")), 3);
+    assert.equal(wordIndexAtChar(text, text.indexOf(".")), 3);
+    assert.equal(storyIndexAtNarrationChar(text, text.indexOf("."), 10), 13);
+  });
+
+  it("does not skip an unread word when charIndex lands on a punctuation token", () => {
+    const text = "Wait — then go.";
+    assert.equal(wordIndexAtChar(text, text.indexOf("Wait")), 0);
+    assert.equal(wordIndexAtChar(text, text.indexOf("—")), 1);
+    assert.equal(wordIndexAtChar(text, text.indexOf("then")), 2);
+    assert.equal(storyIndexAtNarrationChar(text, text.indexOf("—"), 4), 5);
+    assert.equal(storyIndexAtNarrationChar(text, text.indexOf("then"), 4), 6);
+  });
+
+  it("estimates shorter per-word time at a faster TTS rate", () => {
+    const slow = estimatedWordDurationMs("Joyella", 0.7);
+    const normal = estimatedWordDurationMs("Joyella", 0.9);
+    const fast = estimatedWordDurationMs("Joyella", 1.4);
+    assert.ok(fast < normal);
+    assert.ok(normal < slow);
+    assert.ok(estimatedWordDurationMs("Joyella", 0.9) > estimatedWordDurationMs("a", 0.9));
+    const slowStarts = estimatedWordStartTimesMs(["Joyella", "found", "a", "tin."], 0.7);
+    const fastStarts = estimatedWordStartTimesMs(["Joyella", "found", "a", "tin."], 1.4);
+    assert.equal(slowStarts[0], 0);
+    assert.equal(fastStarts[0], 0);
+    assert.ok((fastStarts[3] ?? 0) < (slowStarts[3] ?? 0));
+  });
+
+  it("gives punctuation-only tokens no spoken duration so they do not steal the clock", () => {
+    assert.equal(estimatedWordDurationMs("—", 0.9), 0);
+    assert.equal(estimatedWordDurationMs("...", 0.9), 0);
+    const starts = estimatedWordStartTimesMs(["Wait", "—", "then"], 0.9);
+    assert.ok((starts[1] ?? -1) > (starts[0] ?? 0));
+    assert.equal(starts[2], starts[1]);
+    assert.equal(currentSpokenWordIndex(["Wait", "—", "then"], 1), 2);
+  });
+
+  it("never highlights a word whose estimated start has not been reached", () => {
+    const startTimesMs = [0, 400, 700, 1100];
+    assert.equal(
+      wordClockTargetIndex({
+        elapsedMs: 0,
+        startTimesMs,
+        lastIndex: 0,
+      }),
+      0,
+    );
+    assert.equal(
+      wordClockTargetIndex({
+        elapsedMs: 399,
+        startTimesMs,
+        lastIndex: 0,
+      }),
+      0,
+    );
+    assert.equal(
+      wordClockTargetIndex({
+        elapsedMs: 400,
+        startTimesMs,
+        lastIndex: 0,
+      }),
+      1,
+    );
+  });
+
+  it("never skips more than one word ahead of the clock, even if a boundary jumps", () => {
+    const startTimesMs = [0, 400, 700, 1100];
+    assert.equal(
+      wordClockTargetIndex({
+        elapsedMs: 410,
+        startTimesMs,
+        lastIndex: 1,
+        boundaryIndex: 3,
+      }),
+      2,
+    );
+  });
+
+  it("rejects stuck-at-zero and far-ahead tablet boundary events", () => {
+    const text = "Joyella found a tin.";
+    assert.equal(
+      isPlausibleWordBoundary({
+        charIndex: 0,
+        text,
+        lastCharIndex: null,
+        clockIndex: 0,
+      }),
+      true,
+    );
+    assert.equal(
+      isPlausibleWordBoundary({
+        charIndex: 0,
+        text,
+        lastCharIndex: 0,
+        clockIndex: 1,
+      }),
+      false,
+    );
+    assert.equal(
+      isPlausibleWordBoundary({
+        charIndex: text.length - 1,
+        text,
+        lastCharIndex: null,
+        clockIndex: 0,
+      }),
+      false,
+    );
   });
 });
