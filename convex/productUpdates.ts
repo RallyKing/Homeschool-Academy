@@ -191,7 +191,7 @@ const FEATURE_SEEDS: FeatureSeed[] = [
 - SuperAdmin: Admin → Read-along (pick a school)
 
 **Story recipes**
-Parents fill a form: title, grade level, theme, moral lessons, length, and the **AI prompt** that generates stories. Students pick a recipe, then generate. No recipe, no generated story (starter recipes can be added).
+Parents fill grade, theme, morals, and length — those fields **generate the AI prompt**. Students pick a recipe, then generate. No recipe, no generated story (starter recipes can be added).
 
 **How reading works**
 1. The current word highlights in teal. Tap any word to hear it (browser text-to-speech).
@@ -205,6 +205,181 @@ Parents fill a form: title, grade level, theme, moral lessons, length, and the *
     version: "1.8.0",
     slug: "read-along-stories",
     category: "Learning",
+  },
+  {
+    title: "Read-along recipes, listen mode & sticky controls",
+    summary:
+      "Recipes build the AI prompt from grade, theme, morals, and length. Listen and highlight, tap a word to hear it, wrap vocabulary with Read To Me, and keep Start mic / Next / Hear this word pinned at the bottom.",
+    body: `Read-along now follows a recipe-first flow and keeps reading controls on screen.
+
+**Where to go**
+- Students: Today → Read, or \`/student/read-along\`
+- Parents: Learn → Read-along (\`/family/read-along\`)
+- SuperAdmin: Admin → Read-along (pick a school)
+
+**Story recipes**
+Parents set grade, theme, moral lessons, and length. Those fields **generate the AI prompt** used to write the story. Students pick a recipe, then generate. No recipe, no generated story.
+
+**Listen, highlight, and tap-to-hear**
+- The current word highlights as the child reads
+- Tap any word to hear it with browser text-to-speech
+- Listen mode highlights along with playback
+
+**Vocabulary**
+Tap a word for an age-fit meaning in a wrapping modal. **Read To Me** speaks the definition word-by-word with highlighting. **Back to Story** closes the modal and returns to the passage.
+
+**Sticky bottom bar**
+Start mic, Next, and Hear this word stay pinned at the bottom so controls do not scroll away.
+
+**Microphone**
+In Chrome or Edge, the mic stays on while the child is reading well (look-ahead matching). It only stops on a miss, then offers a retry. Safari can still use Next and tap-to-hear.
+
+**Practice, points, and time**
+A miss pauses for one retry; a second miss plays the word, marks it for help, and continues. After the story, practice missed words. Correct words earn small points (1 per 5 words). Session time is logged as a learning session.
+
+**Privacy**
+Chrome/Edge speech recognition uses the browser’s speech service. Audio is not stored in Homeschool Academy.`,
+    version: "1.9.0",
+    slug: "read-along-recipes-player",
+    category: "Learning",
+  },
+  {
+    title: "School accounts & contacts directory",
+    summary:
+      "Create a school with its main parent first, then add parents, teachers (with student and class access), students, and a shared contacts directory.",
+    body: `Schools are first-class accounts with a contacts directory and scoped teacher access.
+
+**Where to go**
+- SuperAdmin: Admin → Accounts (\`/admin/accounts\`)
+- Parents: Settings → Accounts tab (\`/family/settings\`)
+- Everyone with access: Contacts (\`/contacts\`)
+
+**Creation order**
+1. Create the **school + main parent** together
+2. Add additional **parents**
+3. Add **teachers** and assign which students and classes they can see
+4. Students and contact cards follow that school
+
+**Contacts**
+\`/contacts\` is the school directory. Use **Sync existing records** on the school settings tab to backfill contact cards from members who already exist.`,
+    version: "1.10.0",
+    slug: "school-accounts-contacts",
+    category: "Platform",
+  },
+  {
+    title: "Merge duplicate schools",
+    summary:
+      "Collapse duplicate schools and contact cards from Admin → Accounts. Ballard Family was merged into Ballard Kids Learning.",
+    body: `SuperAdmins can merge two schools without losing students, courses, logs, or contacts.
+
+**Where to go**
+- Admin → Accounts (\`/admin/accounts\`) — Merge schools panel
+
+**What you can do**
+- Preview a merge, then apply it
+- Choose the surviving school name (target, source, or custom)
+- Collapse duplicate contact cards in the surviving school
+- Backfill / sync contacts after the merge
+
+**Ballard**
+Ballard Family was merged into **Ballard Kids Learning**. Related names like that now show up in the detected-duplicates list so they are easier to combine.`,
+    version: "1.11.0",
+    slug: "school-account-merge",
+    category: "Platform",
+  },
+  {
+    title: "Cheer Wall reactions, comments & re-cheers",
+    summary:
+      "The family Cheer Wall works like a private social feed — reactions, comments, re-cheers, and teachers can take part.",
+    body: `The Cheer Wall is a private, Facebook-like feed for the school family — not a public internet timeline.
+
+**Where to go**
+- Parents: Life → Family wall (\`/family/cheers\`, Wall tab) or \`/family/feed\`
+- Students: Home, or Life → Cheer → Wall (\`/student/social?tab=wall\`)
+- Teachers: the same family wall for schools they belong to
+
+**What you can do**
+- React to posts
+- Comment on celebrations
+- Re-cheer a post so it shows up again for the family
+- Compose encouragement that stays inside the school
+
+**Privacy**
+Family-only. No public internet, no competitive rankings.`,
+    version: "1.12.0",
+    slug: "cheer-wall-social",
+    category: "Family life",
+  },
+  {
+    title: "Family log edit, delete & XP reverse",
+    summary:
+      "Parents can edit, delete, or nullify learning logs. Nullify and delete reverse the XP, points, and stars from that entry.",
+    body: `The family learning ledger is full CRUD, with gamification that stays in sync.
+
+**Where to go**
+- Learning ledger (\`/family/ledger\`)
+- A student’s logs on the family dashboard
+
+**What you can do**
+- **Edit** a log when the record needs a correction
+- **Nullify** it to keep an audit trail (optional reason) while dropping it from progress totals
+- **Delete** it permanently
+- Nullify or delete **reverses XP, points, and stars** granted by that log so the economy stays honest`,
+    version: "1.13.0",
+    slug: "family-log-xp-reverse",
+    category: "Learning",
+  },
+  {
+    title: "Direct password reset",
+    summary:
+      "Set a new password on /reset-password with email and the new password — no one-time code.",
+    body: `Password recovery is a direct new-password form.
+
+**Where to go**
+- Sign in → Forgot password, or \`/reset-password\`
+
+**How it works**
+1. Enter the account email
+2. Enter and confirm the new password (at least 8 characters)
+3. You are signed in with the new password
+
+Email matching is case-insensitive. If something fails, the page shows a clear error instead of a generic server message.`,
+    version: "1.14.0",
+    slug: "direct-password-reset",
+    category: "Platform",
+  },
+  {
+    title: "Family settings, God Mode & Home feed",
+    summary:
+      "Full family and student settings, SuperAdmin God Mode CRUD for users/subjects/orgs, weekly XP wiring, and student Home as the family feed.",
+    body: `Settings and admin tools are complete, and student Home is the family feed.
+
+**Family & student settings**
+- Parents: \`/family/settings\` — accounts, household, students, subjects, academies, rewards, notifications, privacy, AI, account
+- Students: \`/student/settings\` — profile, customization, notifications, privacy, account
+
+**God Mode**
+SuperAdmins at Admin (\`/admin\`) can create, edit, and delete **Users**, **Subjects**, and **Orgs**.
+
+**XP and Home**
+Weekly XP leaderboard wiring is connected. Student **Home** is the family Cheer Wall feed (\`/student/dashboard\`, Home tab), not a blank dashboard.`,
+    version: "1.15.0",
+    slug: "settings-god-mode-home-feed",
+    category: "Platform",
+  },
+  {
+    title: "Public pages load without a nav crash",
+    summary:
+      "Signed-out public pages load again — the nav skips the family query until someone is signed in.",
+    body: `The top navigation no longer asks for family data when nobody is signed in.
+
+**What changed**
+Public routes (sign-in, reset password, marketing pages) were hanging or crashing because Nav always called \`myFamily\`. It now **skips** that query until there is a signed-in user.
+
+Signed-in family and student nav is unchanged.`,
+    version: "1.16.0",
+    slug: "public-nav-myfamily-skip",
+    category: "Platform",
   },
 ];
 

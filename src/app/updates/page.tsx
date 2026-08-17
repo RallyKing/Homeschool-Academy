@@ -81,7 +81,7 @@ export default function UpdatesPage() {
         compact
         eyebrow="Product"
         title="What's new"
-        description="Product upgrades and platform changes."
+        description="Shipped upgrades for families, students, and SuperAdmins — including read-along, school accounts, and the Cheer Wall."
         actions={
           <div className="flex flex-wrap gap-2">
             <Link href="/help">
