@@ -483,6 +483,85 @@ export function remainingStoryWords(
   return words.slice(Math.max(0, startIndex));
 }
 
+/** Pack complete sentences into one TTS utterance (story pacing, not one word). */
+export const MAX_NARRATION_CHUNK_WORDS = 40;
+
+export type StoryNarrationChunk = {
+  text: string;
+  startStoryIndex: number;
+  tokenCount: number;
+};
+
+function isSentenceEndToken(word: string): boolean {
+  return /[.!?]["'”’)]*$/.test(word.trim());
+}
+
+export function storyNarrationChunks(
+  words: string[],
+  startIndex: number,
+): StoryNarrationChunk[] {
+  const from = Math.max(0, startIndex);
+  if (from >= words.length) return [];
+
+  const sentences: Array<{ tokens: string[]; start: number }> = [];
+  let tokens: string[] = [];
+  let start = from;
+  for (let i = from; i < words.length; i++) {
+    const word = words[i];
+    if (!word) continue;
+    if (tokens.length === 0) start = i;
+    tokens.push(word);
+    if (isSentenceEndToken(word) || i === words.length - 1) {
+      sentences.push({ tokens, start });
+      tokens = [];
+    }
+  }
+  if (tokens.length > 0) {
+    sentences.push({ tokens, start });
+  }
+
+  const chunks: StoryNarrationChunk[] = [];
+  let packed: string[] = [];
+  let packedStart = from;
+  for (const sentence of sentences) {
+    if (
+      packed.length > 0 &&
+      packed.length + sentence.tokens.length > MAX_NARRATION_CHUNK_WORDS
+    ) {
+      chunks.push({
+        text: packed.join(" "),
+        startStoryIndex: packedStart,
+        tokenCount: packed.length,
+      });
+      packed = [];
+    }
+    if (packed.length === 0) packedStart = sentence.start;
+    packed.push(...sentence.tokens);
+  }
+  if (packed.length > 0) {
+    chunks.push({
+      text: packed.join(" "),
+      startStoryIndex: packedStart,
+      tokenCount: packed.length,
+    });
+  }
+  return chunks;
+}
+
+export function storyIndexAtNarrationChar(
+  text: string,
+  charIndex: number,
+  startStoryIndex: number,
+): number {
+  const tokens = splitHighlightWords(text);
+  if (tokens.length === 0) return startStoryIndex;
+  const local = Math.min(
+    Math.max(0, wordIndexAtChar(text, charIndex)),
+    tokens.length - 1,
+  );
+  return startStoryIndex + local;
+}
+
 export function loadReadAlongTtsSettings(): {
   voiceURI: string;
   rate: number;
@@ -678,26 +757,27 @@ export function speakStoryFrom(
     onEnd?: () => void;
   },
 ): void {
+  const chunks = storyNarrationChunks(words, startIndex);
   const gen = ++storyReadGen;
-  const speakAt = (i: number) => {
+  const speakChunk = (c: number) => {
     if (gen !== storyReadGen) return;
-    if (i >= words.length) {
+    const chunk = chunks[c];
+    if (!chunk) {
       opts?.onEnd?.();
       return;
     }
-    const raw = words[i];
-    if (!raw || isSkippableToken(raw)) {
-      speakAt(i + 1);
-      return;
-    }
-    opts?.onWord?.(i);
-    speakText(spokenWordForTts(raw), {
+    opts?.onWord?.(chunk.startStoryIndex);
+    speakText(chunk.text, {
       rate: opts?.rate,
       voiceURI: opts?.voiceURI,
-      onEnd: () => speakAt(i + 1),
+      onBoundaryWord: (localIdx) => {
+        if (gen !== storyReadGen) return;
+        opts?.onWord?.(chunk.startStoryIndex + localIdx);
+      },
+      onEnd: () => speakChunk(c + 1),
     });
   };
-  speakAt(Math.max(0, startIndex));
+  speakChunk(0);
 }
 
 export function stopSpeaking(): void {

@@ -24,6 +24,8 @@ import {
   preferUsEnglishVoice,
   remainingStoryWords,
   shouldDeferMicRestart,
+  storyIndexAtNarrationChar,
+  storyNarrationChunks,
   ttsRateForPreset,
   unmatchedTranscript,
   wordsMatch,
@@ -371,5 +373,57 @@ describe("read-aloud TTS settings", () => {
       "can",
     ]);
     assert.deepEqual(remainingStoryWords(["a", "tin"], 0), ["a", "tin"]);
+  });
+
+  it("builds story-style sentence chunks instead of isolated words", () => {
+    const words = ["Joyella", "found", "a", "tin.", "Then", "she", "ran."];
+    const chunks = storyNarrationChunks(words, 0);
+    assert.equal(chunks.length, 1);
+    assert.equal(chunks[0]?.text, "Joyella found a tin. Then she ran.");
+    assert.equal(chunks[0]?.startStoryIndex, 0);
+    assert.equal(
+      chunks.some((chunk) => chunk.text === "Joyella"),
+      false,
+    );
+  });
+
+  it("starts the first chunk at the current highlight, even mid-sentence", () => {
+    const words = ["Joyella", "found", "a", "tin.", "Then", "she", "ran."];
+    const chunks = storyNarrationChunks(words, 2);
+    assert.equal(chunks[0]?.text, "a tin. Then she ran.");
+    assert.equal(chunks[0]?.startStoryIndex, 2);
+  });
+
+  it("maps a spoken-text char offset back to the story word index", () => {
+    const text = "a tin.";
+    assert.equal(storyIndexAtNarrationChar(text, 0, 2), 2);
+    assert.equal(storyIndexAtNarrationChar(text, 2, 2), 3);
+  });
+
+  it("packs short sentences into one paragraph utterance", () => {
+    const words = [
+      "The",
+      "cat",
+      "sat.",
+      "The",
+      "cat",
+      "ran.",
+      "Then",
+      "it",
+      "rested.",
+    ];
+    const chunks = storyNarrationChunks(words, 0);
+    assert.equal(chunks.length, 1);
+    assert.equal(chunks[0]?.text, "The cat sat. The cat ran. Then it rested.");
+  });
+
+  it("starts a new paragraph chunk after the word cap without splitting a sentence", () => {
+    const sentence = ["One", "two", "three", "four", "five", "six", "seven."];
+    const words = [...sentence, ...sentence, ...sentence, ...sentence, ...sentence, ...sentence];
+    const chunks = storyNarrationChunks(words, 0);
+    assert.ok(chunks.length >= 2);
+    assert.equal(chunks[0]?.text.endsWith("seven."), true);
+    assert.equal(chunks[0]?.text.includes(" "), true);
+    assert.ok((chunks[0]?.tokenCount ?? 0) <= 42);
   });
 });
