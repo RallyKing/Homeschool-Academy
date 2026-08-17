@@ -11,6 +11,10 @@ export type ContactKind =
   | "student"
   | "user";
 
+function normalizeContactName(value: string): string {
+  return value.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
 export async function findContactForEntity(
   ctx: Ctx,
   args: {
@@ -18,6 +22,9 @@ export async function findContactForEntity(
     familyId?: Id<"families">;
     userId?: Id<"users">;
     studentId?: Id<"students">;
+    /** Also treat "same school + same kind + same name" as the same contact. */
+    matchByName?: boolean;
+    displayName?: string;
   },
 ): Promise<Doc<"contacts"> | null> {
   if (args.studentId) {
@@ -50,6 +57,20 @@ export async function findContactForEntity(
       .first();
   }
 
+  if (args.matchByName && args.familyId && args.displayName) {
+    const key = normalizeContactName(args.displayName);
+    if (!key) return null;
+    const rows = await ctx.db
+      .query("contacts")
+      .withIndex("by_family_and_kind", (q) =>
+        q.eq("familyId", args.familyId).eq("kind", args.kind),
+      )
+      .collect();
+    return (
+      rows.find((row) => normalizeContactName(row.displayName) === key) ?? null
+    );
+  }
+
   return null;
 }
 
@@ -66,6 +87,7 @@ export async function upsertEntityContact(
     phones?: string[];
     notes?: string;
     roleLabel?: string;
+    matchByName?: boolean;
   },
 ): Promise<Id<"contacts">> {
   const displayName = args.displayName.trim();
@@ -83,13 +105,15 @@ export async function upsertEntityContact(
     familyId: args.familyId,
     userId: args.userId,
     studentId: args.studentId,
+    matchByName: args.matchByName,
+    displayName,
   });
 
   const now = Date.now();
   if (existing) {
     await ctx.db.patch("contacts", existing._id, {
       displayName,
-      emails,
+      emails: emails.length > 0 ? emails : existing.emails,
       phones: phones.length > 0 ? phones : existing.phones,
       notes: args.notes !== undefined ? args.notes : existing.notes,
       roleLabel:

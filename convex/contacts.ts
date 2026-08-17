@@ -11,8 +11,10 @@ import {
 } from "./lib/auth";
 import {
   deleteContactAndLinks,
+  findContactForEntity,
   replaceContactCourseLinks,
   replaceContactStudentLinks,
+  upsertEntityContact,
 } from "./lib/contacts";
 import {
   contactDocValidator,
@@ -272,6 +274,7 @@ export const create = mutation({
     studentId: v.optional(v.id("students")),
     studentIds: v.optional(v.array(v.id("students"))),
     courseIds: v.optional(v.array(v.id("courses"))),
+    allowDuplicateName: v.optional(v.boolean()),
   },
   returns: v.id("contacts"),
   handler: async (ctx, args) => {
@@ -279,19 +282,37 @@ export const create = mutation({
     const displayName = args.displayName.trim();
     if (!displayName) throw new Error("Name is required");
 
-    const contactId = await ctx.db.insert("contacts", {
+    const byEntity = await findContactForEntity(ctx, {
+      kind: args.kind,
+      familyId: args.familyId,
+      userId: args.userId,
+      studentId: args.studentId,
+    });
+    if (!byEntity) {
+      const byName = await findContactForEntity(ctx, {
+        kind: args.kind,
+        familyId: args.familyId,
+        matchByName: true,
+        displayName,
+      });
+      if (byName && !args.allowDuplicateName) {
+        throw new Error(
+          `A contact named "${byName.displayName}" already exists at this school. Edit that card instead, or confirm "Add anyway" if these are different people.`,
+        );
+      }
+    }
+
+    const contactId = await upsertEntityContact(ctx, {
       kind: args.kind,
       familyId: args.familyId,
       userId: args.userId,
       studentId: args.studentId,
       displayName,
-      emails: (args.emails ?? [])
-        .map((e) => e.trim().toLowerCase())
-        .filter((e) => e.includes("@")),
-      phones: (args.phones ?? []).map((p) => p.trim()).filter(Boolean),
+      emails: args.emails ?? [],
+      phones: args.phones ?? [],
       notes: args.notes?.trim() || undefined,
       roleLabel: args.roleLabel?.trim() || args.kind,
-      createdAt: Date.now(),
+      matchByName: false,
     });
 
     if (args.studentIds) {

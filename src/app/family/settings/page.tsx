@@ -23,6 +23,7 @@ import {
 } from "@/components/ui";
 import { usePageTab } from "@/hooks/usePageTab";
 import { SchoolAccountsSettings } from "@/components/SchoolAccountsSettings";
+import { withDuplicateNameOverride } from "@/lib/duplicateName";
 
 const FAMILY_SETTINGS_TABS = [
   "accounts",
@@ -211,7 +212,9 @@ function FamilySettingsInner() {
     const next = familyName.trim();
     if (!next) return;
     try {
-      await updateFamily({ familyId: fam._id, name: next });
+      await withDuplicateNameOverride((allowDuplicateName) =>
+        updateFamily({ familyId: fam._id, name: next, allowDuplicateName }),
+      );
       notify("Family name updated.");
     } catch (err) {
       notify(err instanceof Error ? err.message : "Failed", "error");
@@ -238,11 +241,14 @@ function FamilySettingsInner() {
     e.preventDefault();
     if (!studentName.trim()) return;
     try {
-      await createStudent({
-        familyId: fam._id,
-        displayName: studentName.trim(),
-        academicLevel: studentLevel.trim() || undefined,
-      });
+      await withDuplicateNameOverride((allowDuplicateName) =>
+        createStudent({
+          familyId: fam._id,
+          displayName: studentName.trim(),
+          academicLevel: studentLevel.trim() || undefined,
+          allowDuplicateName,
+        }),
+      );
       setStudentName("");
       setStudentLevel("");
       notify("Student added.");

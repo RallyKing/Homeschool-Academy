@@ -25,6 +25,7 @@ import {
   TabPanel,
 } from "@/components/ui";
 import { usePageTab } from "@/hooks/usePageTab";
+import { withDuplicateNameOverride } from "@/lib/duplicateName";
 
 const FAMILY_TABS = ["overview", "students", "household"] as const;
 
@@ -134,7 +135,9 @@ function FamilyDashboardInner() {
     if (!family) return;
     const nextName = (familyNameEdit || familyNameSynced).trim();
     try {
-      await updateFamily({ familyId: family._id, name: nextName });
+      await withDuplicateNameOverride((allowDuplicateName) =>
+        updateFamily({ familyId: family._id, name: nextName, allowDuplicateName }),
+      );
       setFamilyNameEdit(nextName);
       setMessage("Family name updated.");
     } catch (err) {
@@ -148,11 +151,14 @@ function FamilyDashboardInner() {
     setMessage(null);
     try {
       if (!family) await ensureFamily({});
-      await createStudent({
-        displayName: name.trim(),
-        academicLevel: level.trim() || undefined,
-        birthYear: birthYear ? Number(birthYear) : undefined,
-      });
+      await withDuplicateNameOverride((allowDuplicateName) =>
+        createStudent({
+          displayName: name.trim(),
+          academicLevel: level.trim() || undefined,
+          birthYear: birthYear ? Number(birthYear) : undefined,
+          allowDuplicateName,
+        }),
+      );
       closeStudentModal();
       setMessage("Student added.");
       setTab("students");
@@ -165,12 +171,15 @@ function FamilyDashboardInner() {
     e.preventDefault();
     if (!editStudentId) return;
     try {
-      await updateStudent({
-        studentId: editStudentId as Id<"students">,
-        displayName: name.trim() || undefined,
-        academicLevel: level.trim() || undefined,
-        birthYear: birthYear ? Number(birthYear) : undefined,
-      });
+      await withDuplicateNameOverride((allowDuplicateName) =>
+        updateStudent({
+          studentId: editStudentId as Id<"students">,
+          displayName: name.trim() || undefined,
+          academicLevel: level.trim() || undefined,
+          birthYear: birthYear ? Number(birthYear) : undefined,
+          allowDuplicateName,
+        }),
+      );
       closeStudentModal();
       setMessage("Student updated.");
     } catch (err) {

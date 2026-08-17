@@ -18,6 +18,7 @@ import {
   Tabs,
   Textarea,
 } from "@/components/ui";
+import { withDuplicateNameOverride } from "@/lib/duplicateName";
 
 type AccountTab = "school" | "parents" | "teachers" | "students" | "contacts";
 type SchoolRole = "admin" | "regular";
@@ -137,12 +138,15 @@ export function SchoolAccountsSettings({
   async function onCreateSchool(e: FormEvent) {
     e.preventDefault();
     try {
-      const result = await createSchool({
-        schoolName: schoolName.trim(),
-        mainParentEmail: mainEmail.trim(),
-        mainParentName: mainName.trim() || undefined,
-        mainParentPhone: mainPhone.trim() || undefined,
-      });
+      const result = await withDuplicateNameOverride((allowDuplicateName) =>
+        createSchool({
+          schoolName: schoolName.trim(),
+          mainParentEmail: mainEmail.trim(),
+          mainParentName: mainName.trim() || undefined,
+          mainParentPhone: mainPhone.trim() || undefined,
+          allowDuplicateName,
+        }),
+      );
       setSelectedId(result.familyId);
       setSchoolName("");
       setMainName("");
@@ -165,7 +169,9 @@ export function SchoolAccountsSettings({
     const next = (renameDraft ?? selectedSchool?.name ?? "").trim();
     if (!next) return;
     try {
-      await updateFamily({ familyId, name: next });
+      await withDuplicateNameOverride((allowDuplicateName) =>
+        updateFamily({ familyId, name: next, allowDuplicateName }),
+      );
       notify("School name updated.");
     } catch (err) {
       notify(err instanceof Error ? err.message : "Failed", "error");
@@ -270,18 +276,24 @@ export function SchoolAccountsSettings({
     if (!familyId || !studentName.trim()) return;
     try {
       if (editStudentId) {
-        await updateStudent({
-          studentId: editStudentId,
-          displayName: studentName.trim(),
-          academicLevel: studentLevel.trim() || undefined,
-        });
+        await withDuplicateNameOverride((allowDuplicateName) =>
+          updateStudent({
+            studentId: editStudentId,
+            displayName: studentName.trim(),
+            academicLevel: studentLevel.trim() || undefined,
+            allowDuplicateName,
+          }),
+        );
         notify("Student updated.");
       } else {
-        await createStudent({
-          familyId,
-          displayName: studentName.trim(),
-          academicLevel: studentLevel.trim() || undefined,
-        });
+        await withDuplicateNameOverride((allowDuplicateName) =>
+          createStudent({
+            familyId,
+            displayName: studentName.trim(),
+            academicLevel: studentLevel.trim() || undefined,
+            allowDuplicateName,
+          }),
+        );
         notify("Student added.");
       }
       setStudentName("");
@@ -341,14 +353,17 @@ export function SchoolAccountsSettings({
         });
         notify("Contact updated.");
       } else {
-        await createContact({
-          familyId,
-          kind: contactKind,
-          displayName: contactName.trim(),
-          emails,
-          phones,
-          notes: contactNotes.trim() || undefined,
-        });
+        await withDuplicateNameOverride((allowDuplicateName) =>
+          createContact({
+            familyId,
+            kind: contactKind,
+            displayName: contactName.trim(),
+            emails,
+            phones,
+            notes: contactNotes.trim() || undefined,
+            allowDuplicateName,
+          }),
+        );
         notify("Contact created.");
       }
       setContactOpen(false);

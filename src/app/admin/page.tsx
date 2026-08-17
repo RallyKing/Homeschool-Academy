@@ -24,6 +24,8 @@ import {
 } from "@/components/ui";
 import { usePageTab } from "@/hooks/usePageTab";
 import { ReadAlongRecipePanel } from "@/components/ReadAlongRecipePanel";
+import { MergeDuplicatesPanel } from "@/components/MergeDuplicatesPanel";
+import { withDuplicateNameOverride } from "@/lib/duplicateName";
 
 type SubjectCategory = "stem" | "humanities" | "life" | "applied";
 type AppRole = "superAdmin" | "parent" | "teacher" | "student";
@@ -218,13 +220,18 @@ function AdminInner() {
     if (!familyName.trim()) return;
     try {
       if (editFamilyId) {
-        await updateFamily({
-          familyId: editFamilyId as Id<"families">,
-          name: familyName.trim(),
-        });
+        await withDuplicateNameOverride((allowDuplicateName) =>
+          updateFamily({
+            familyId: editFamilyId as Id<"families">,
+            name: familyName.trim(),
+            allowDuplicateName,
+          }),
+        );
         notify("Family updated.", "success");
       } else {
-        await createFamily({ name: familyName.trim() });
+        await withDuplicateNameOverride((allowDuplicateName) =>
+          createFamily({ name: familyName.trim(), allowDuplicateName }),
+        );
         notify("Family created.", "success");
       }
       setFamilyModalOpen(false);
@@ -627,6 +634,9 @@ function AdminInner() {
             </Section>
           </Col>
         </Row>
+        <div className="mt-8">
+          <MergeDuplicatesPanel />
+        </div>
       </TabPanel>
 
       <TabPanel id="users" active={tab === "users"}>

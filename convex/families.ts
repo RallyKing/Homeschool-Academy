@@ -9,6 +9,7 @@ import {
   requireSchoolAdmin,
 } from "./lib/auth";
 import { upsertEntityContact } from "./lib/contacts";
+import { assertSchoolNameAvailable } from "./lib/schoolGuards";
 import { familyDocValidator, schoolRoleValidator } from "./lib/validators";
 
 const familyMemberDocValidator = v.object({
@@ -22,10 +23,14 @@ const familyMemberDocValidator = v.object({
 });
 
 export const create = mutation({
-  args: { name: v.string() },
+  args: { name: v.string(), allowDuplicateName: v.optional(v.boolean()) },
   returns: v.id("families"),
   handler: async (ctx, args) => {
     const user = await requireRole(ctx, ["parent", "superAdmin"]);
+    await assertSchoolNameAvailable(ctx, {
+      name: args.name,
+      allowDuplicateName: args.allowDuplicateName,
+    });
     const now = Date.now();
 
     const familyId = await ctx.db.insert("families", {
@@ -72,6 +77,7 @@ export const update = mutation({
     name: v.optional(v.string()),
     parentGuardrailContext: v.optional(v.string()),
     defaultPublicCheer: v.optional(v.boolean()),
+    allowDuplicateName: v.optional(v.boolean()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -87,6 +93,11 @@ export const update = mutation({
       if (!name) {
         throw new Error("Family name is required");
       }
+      await assertSchoolNameAvailable(ctx, {
+        name,
+        allowDuplicateName: args.allowDuplicateName,
+        exceptFamilyId: args.familyId,
+      });
       patch.name = name;
     }
     if (args.parentGuardrailContext !== undefined) {
@@ -343,8 +354,11 @@ export const ensureMine = mutation({
     }
 
     const now = Date.now();
+    const name = args.name?.trim() || `${user.name ?? "Family"} Household`;
+    await assertSchoolNameAvailable(ctx, { name });
+
     const familyId = await ctx.db.insert("families", {
-      name: args.name?.trim() || `${user.name ?? "Family"} Household`,
+      name,
       createdBy: user._id,
       mainParentUserId: user._id,
       createdAt: now,
@@ -365,7 +379,7 @@ export const ensureMine = mutation({
     await upsertEntityContact(ctx, {
       kind: "school",
       familyId,
-      displayName: args.name?.trim() || `${user.name ?? "Family"} Household`,
+      displayName: name,
       roleLabel: "school",
     });
     await upsertEntityContact(ctx, {

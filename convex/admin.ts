@@ -9,6 +9,7 @@ import {
   requireSuperAdmin,
 } from "./lib/auth";
 import { deleteContactsForUser } from "./lib/contacts";
+import { assertSchoolNameAvailable } from "./lib/schoolGuards";
 import {
   familyDocValidator,
   roleValidator,
@@ -396,12 +397,16 @@ export const promoteToSuperAdmin = mutation({
 });
 
 export const createFamily = mutation({
-  args: { name: v.string() },
+  args: { name: v.string(), allowDuplicateName: v.optional(v.boolean()) },
   returns: v.id("families"),
   handler: async (ctx, args) => {
     const admin = await requireSuperAdmin(ctx);
     const name = args.name.trim();
     if (!name) throw new Error("Family name is required");
+    await assertSchoolNameAvailable(ctx, {
+      name,
+      allowDuplicateName: args.allowDuplicateName,
+    });
 
     return await ctx.db.insert("families", {
       name,
@@ -415,6 +420,7 @@ export const updateFamily = mutation({
   args: {
     familyId: v.id("families"),
     name: v.string(),
+    allowDuplicateName: v.optional(v.boolean()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -424,6 +430,11 @@ export const updateFamily = mutation({
 
     const name = args.name.trim();
     if (!name) throw new Error("Family name is required");
+    await assertSchoolNameAvailable(ctx, {
+      name,
+      allowDuplicateName: args.allowDuplicateName,
+      exceptFamilyId: args.familyId,
+    });
 
     await ctx.db.patch("families", args.familyId, { name });
     return null;

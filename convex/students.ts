@@ -12,6 +12,7 @@ import {
   requireStudentFamilyAccess,
 } from "./lib/auth";
 import { upsertEntityContact } from "./lib/contacts";
+import { assertStudentNameAvailable } from "./lib/schoolGuards";
 import { studentDocValidator } from "./lib/validators";
 
 export const listForMyFamily = query({
@@ -70,6 +71,7 @@ export const create = mutation({
     displayName: v.string(),
     birthYear: v.optional(v.number()),
     academicLevel: v.optional(v.string()),
+    allowDuplicateName: v.optional(v.boolean()),
   },
   returns: v.id("students"),
   handler: async (ctx, args) => {
@@ -90,6 +92,11 @@ export const create = mutation({
     if (!displayName) {
       throw new Error("Student name is required");
     }
+    await assertStudentNameAvailable(ctx, {
+      familyId,
+      displayName,
+      allowDuplicateName: args.allowDuplicateName,
+    });
 
     const studentId = await ctx.db.insert("students", {
       familyId,
@@ -121,6 +128,7 @@ export const update = mutation({
     notifyKudos: v.optional(v.boolean()),
     notifyChores: v.optional(v.boolean()),
     notifyQuests: v.optional(v.boolean()),
+    allowDuplicateName: v.optional(v.boolean()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -158,6 +166,12 @@ export const update = mutation({
     if (args.displayName !== undefined) {
       const name = args.displayName.trim();
       if (!name) throw new Error("Student name is required");
+      await assertStudentNameAvailable(ctx, {
+        familyId: student.familyId,
+        displayName: name,
+        allowDuplicateName: args.allowDuplicateName,
+        exceptStudentId: student._id,
+      });
       patch.displayName = name;
     }
     if (args.birthYear !== undefined && isParent) {

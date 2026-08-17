@@ -18,6 +18,7 @@ import {
   replaceContactStudentLinks,
   upsertEntityContact,
 } from "./lib/contacts";
+import { assertSchoolNameAvailable } from "./lib/schoolGuards";
 import {
   contactDocValidator,
   familyDocValidator,
@@ -257,6 +258,7 @@ export const createWithMainParent = mutation({
     mainParentEmail: v.string(),
     mainParentName: v.optional(v.string()),
     mainParentPhone: v.optional(v.string()),
+    allowDuplicateName: v.optional(v.boolean()),
   },
   returns: v.object({
     familyId: v.id("families"),
@@ -269,6 +271,10 @@ export const createWithMainParent = mutation({
     if (!schoolName) {
       throw new Error("School name is required");
     }
+    await assertSchoolNameAvailable(ctx, {
+      name: schoolName,
+      allowDuplicateName: args.allowDuplicateName,
+    });
 
     if (actor.role !== "superAdmin") {
       const existing = await getPrimaryFamilyForUser(ctx, actor._id);
@@ -945,14 +951,24 @@ export const backfillHierarchy = mutation({
       }
     }
 
+    // Only give a superAdmin a standalone platform card when they don't already
+    // appear in the directory through a school — otherwise the same human shows
+    // up twice.
     if (user.role === "superAdmin") {
-      await upsertEntityContact(ctx, {
-        kind: "user",
-        userId: user._id,
-        displayName: user.name || user.email || "SuperAdmin",
-        emails: user.email ? [user.email] : [],
-        roleLabel: "superAdmin",
-      });
+      const existing = await ctx.db
+        .query("contacts")
+        .withIndex("by_user", (q) => q.eq("userId", user._id))
+        .first();
+      if (!existing) {
+        await upsertEntityContact(ctx, {
+          kind: "user",
+          userId: user._id,
+          displayName: user.name || user.email || "SuperAdmin",
+          emails: user.email ? [user.email] : [],
+          roleLabel: "superAdmin",
+        });
+        contactCount += 1;
+      }
     }
 
     return { families: familyCount, members: memberCount, contacts: contactCount };
