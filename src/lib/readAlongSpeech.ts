@@ -96,6 +96,62 @@ const TARGET_ALIASES: Record<string, readonly string[]> = {
   tin: ["tin", "tinn", "tyn", "ten", "in"],
 };
 
+/** How 4–8 year olds often say a word. Keys are foldWord(expected). */
+const KID_PRONUNCIATIONS: Record<string, readonly string[]> = {
+  the: ["da", "de", "duh", "tha", "tuh"],
+  them: ["dem", "em"],
+  that: ["dat"],
+  this: ["dis", "dit"],
+  those: ["dose"],
+  these: ["dese"],
+  with: ["wif", "wit", "wid"],
+  three: ["free", "tree"],
+  little: ["lil", "liddle", "wittle"],
+  because: ["cuz", "cause", "becuz", "cos"],
+};
+
+const VOWELS = new Set("aeiou");
+
+function kidSimplify(folded: string): string {
+  let s = folded;
+  if (s.endsWith("ing") && s.length >= 5) {
+    s = s.slice(0, -1);
+  }
+  return s.replace(/th/g, "d");
+}
+
+function droppedFinalConsonant(folded: string): string | null {
+  if (folded.length < 3 || folded === "and") return null;
+  const last = folded[folded.length - 1]!;
+  if (VOWELS.has(last)) return null;
+  return folded.slice(0, -1);
+}
+
+function kidSpeechMatch(eFold: string, hFold: string): boolean {
+  const kidHeard = KID_PRONUNCIATIONS[eFold];
+  if (kidHeard?.includes(hFold)) return true;
+  const eKid = kidSimplify(eFold);
+  const hKid = kidSimplify(hFold);
+  if (eKid && eKid === hKid) return true;
+  if (kidHeard?.includes(hKid)) return true;
+  const dropped = droppedFinalConsonant(eFold);
+  if (dropped && dropped === hFold) return true;
+  if (eFold.endsWith("r") && eFold.length >= 3) {
+    const stem = eFold.slice(0, -1);
+    if (hFold === stem || hFold === `${stem}h`) return true;
+  }
+  if (
+    eFold.length >= 4 &&
+    hFold.length >= 4 &&
+    eFold.startsWith("l") &&
+    hFold.startsWith("w") &&
+    kidSimplify(eFold.slice(1)) === kidSimplify(hFold.slice(1))
+  ) {
+    return true;
+  }
+  return false;
+}
+
 function isDroppedArticle(word: string): boolean {
   return foldWord(word) === "a";
 }
@@ -110,14 +166,17 @@ export function wordsMatch(expected: string, heard: string): boolean {
   const e = matchKey(expected);
   const h = matchKey(heard);
   if (h === e) return true;
-  // Short targets: exact/homophone/alias only so tin↔in is not bidirectional.
+  if (kidSpeechMatch(eFold, hFold)) return true;
+  // Short targets: exact/homophone/alias/kid-speech only so "a" does not match "the".
   if (eFold.length <= 3) return false;
   if (e.length >= 4 && h.length >= 4 && (h.includes(e) || e.includes(h))) {
     return true;
   }
   const dist = levenshtein(e, h);
   const max = e.length <= 5 ? 1 : 2;
-  return dist <= max;
+  if (dist <= max) return true;
+  const kidDist = levenshtein(kidSimplify(eFold), kidSimplify(hFold));
+  return kidDist <= max;
 }
 
 export function tokenizeTranscript(transcript: string): string[] {
@@ -150,9 +209,13 @@ function readableLookaheadWindow(
 }
 
 /**
- * Longest consecutive prefix of unread story words (2–5 readable, or 1)
- * that appears in order in the transcript. Does not skip unread words.
- * `consumedTokens` is how far into the transcript the last match reached.
+ * Scan the full utterance. The current word must appear at least once
+ * (kid-speech / aliases allowed). Extra words around it are fine.
+ * After that hit, credit following unread words in order from tokens
+ * after that match. Stop at the first unread word that was not said.
+ * Does not jump to a later story duplicate just because a common word
+ * appeared. `consumedTokens` is how far into the transcript the last
+ * match reached.
  */
 export function matchLookaheadSpeech(
   transcript: string,
@@ -194,11 +257,16 @@ export function matchLookaheadSpeech(
         found = true;
         break;
       }
-      const laterHit = window
-        .slice(w + 1)
-        .some((item) => wordsMatch(item.word, token));
-      if (laterHit) {
-        return { lastIndex, consumedTokens };
+      // After the current word is found, a later story word in this
+      // leftover means we must not skip the unread word in between.
+      // While still hunting for the current word, keep scanning.
+      if (w > 0) {
+        const laterHit = window
+          .slice(w + 1)
+          .some((item) => wordsMatch(item.word, token));
+        if (laterHit) {
+          return { lastIndex, consumedTokens };
+        }
       }
       tokenIdx += 1;
     }
@@ -220,6 +288,9 @@ export function farthestMatchedIndex(
 
 export type MicIntent = "off" | "live" | "paused";
 export type MicCommand = "none" | "start" | "stop";
+
+/** Chrome beeps on every recognition.start(); wait before a rare engine restart. */
+export const MIC_RESTART_DEBOUNCE_MS = 400;
 
 export function micAfterCorrectMatch(intent: MicIntent): {
   intent: MicIntent;
@@ -266,7 +337,7 @@ export function micAfterMiss(intent: MicIntent): {
   return { intent, command: "none" };
 }
 
-/** Pause recognition only while TTS is speaking so the mic does not hear itself. */
+/** Mute transcript analysis while TTS plays. Do not stop() — that beeps. */
 export function micPauseForTts(intent: MicIntent): {
   intent: MicIntent;
   command: MicCommand;
@@ -274,13 +345,17 @@ export function micPauseForTts(intent: MicIntent): {
   if (intent === "off") {
     return { intent: "off", command: "none" };
   }
-  return { intent: "paused", command: "stop" };
+  return { intent: "paused", command: "none" };
+}
+
+export function shouldKeepMicEngine(intent: MicIntent): boolean {
+  return intent === "live" || intent === "paused";
 }
 
 export function micAfterRecognitionEnded(
   intent: MicIntent,
 ): "restart" | "stay_off" {
-  return intent === "live" ? "restart" : "stay_off";
+  return shouldKeepMicEngine(intent) ? "restart" : "stay_off";
 }
 
 export function micAfterHelpFinished(intent: MicIntent): {
@@ -288,13 +363,24 @@ export function micAfterHelpFinished(intent: MicIntent): {
   command: MicCommand;
 } {
   if (intent === "paused") {
-    return { intent: "live", command: "start" };
+    return { intent: "live", command: "none" };
   }
   return { intent, command: "none" };
 }
 
 export function micAfterUserStop(): { intent: "off"; command: "stop" } {
   return { intent: "off", command: "stop" };
+}
+
+export function shouldDeferMicRestart(args: {
+  alreadyStarting: boolean;
+  lastStartAt: number;
+  now: number;
+  debounceMs?: number;
+}): boolean {
+  if (args.alreadyStarting) return true;
+  const wait = args.debounceMs ?? MIC_RESTART_DEBOUNCE_MS;
+  return args.now - args.lastStartAt < wait;
 }
 
 function transcriptIsExtension(current: string[], previous: string[]): boolean {

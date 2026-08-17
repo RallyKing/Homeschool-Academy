@@ -840,7 +840,7 @@ html {
 }
 
 .read-along-session {
-  padding-bottom: calc(10.25rem + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(14.5rem + env(safe-area-inset-bottom, 0px));
 }
 
 .read-along-dock {
@@ -849,6 +849,7 @@ html {
   right: 0;
   bottom: 0;
   z-index: 30;
+  overflow: visible;
   padding: 0.95rem 1rem calc(0.95rem + env(safe-area-inset-bottom, 0px));
   background: var(--glass);
   backdrop-filter: saturate(180%) blur(16px);
@@ -864,25 +865,16 @@ html {
   justify-content: center;
   gap: 0.7rem;
   max-width: 64rem;
+  width: 100%;
+  min-width: 0;
   margin: 0 auto;
-}
-
-.read-along-dock-hear-group {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 0.7rem;
-}
-
-@media (min-width: 640px) {
-  .read-along-dock-hear-group {
-    margin-left: auto;
-  }
+  overflow: visible;
 }
 
 .read-along-dock-btn,
 .read-along-kid-btn {
+  flex: 0 1 auto;
+  max-width: 100%;
   min-height: 3.5rem;
   min-width: 3.5rem;
   padding: 0.9rem 1.35rem !important;

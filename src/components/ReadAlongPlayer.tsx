@@ -36,6 +36,15 @@ import {
   requestLeaveReadAlong,
 } from "@/lib/leaveReadAlong";
 import {
+  READ_ALONG_DOCK_BACK,
+  READ_ALONG_DOCK_BACKUP,
+  READ_ALONG_DOCK_HEAR_WORD,
+  READ_ALONG_DOCK_NEXT,
+  READ_ALONG_DOCK_READ_TO_ME,
+  READ_ALONG_DOCK_SETTINGS,
+  READ_ALONG_DOCK_STOP,
+} from "@/lib/readAlongDock";
+import {
   advanceCreditedTranscript,
   clampTtsRate,
   configureReadAlongRecognition,
@@ -49,8 +58,10 @@ import {
   micAfterRecognitionEnded,
   micAfterUserStop,
   micPauseForTts,
+  MIC_RESTART_DEBOUNCE_MS,
   remainingStoryWords,
   saveReadAlongTtsSettings,
+  shouldDeferMicRestart,
   speakStoryFrom,
   speakText,
   speechRecognitionSupported,
@@ -150,6 +161,9 @@ export function ReadAlongPlayer({
     abort: () => void;
   } | null>(null);
   const listenGenRef = useRef(0);
+  const micStartingRef = useRef(false);
+  const lastMicStartAtRef = useRef(0);
+  const micRestartTimerRef = useRef<number | null>(null);
   const transcriptAtLastMatchRef = useRef("");
   const lastTranscriptRef = useRef("");
   const syncedRef = useRef(false);
@@ -432,8 +446,22 @@ export function ReadAlongPlayer({
       );
       return;
     }
+    if (recognitionRef.current && micIntentRef.current !== "off") {
+      micIntentRef.current = "live";
+      listeningRef.current = true;
+      setListening(true);
+      setListenError(null);
+      setIdlePaused(false);
+      setIdleModalOpen(false);
+      noteReaderActivityRef.current();
+      return;
+    }
     listenGenRef.current += 1;
     const gen = listenGenRef.current;
+    if (micRestartTimerRef.current != null) {
+      window.clearTimeout(micRestartTimerRef.current);
+      micRestartTimerRef.current = null;
+    }
     recognitionRef.current?.abort();
     recognitionRef.current = null;
     transcriptAtLastMatchRef.current = "";
@@ -466,40 +494,67 @@ export function ReadAlongPlayer({
       }
       setListenError(`Mic: ${ev.error}`);
     };
+
+    const tryStart = (delayMs: number) => {
+      if (micRestartTimerRef.current != null) {
+        window.clearTimeout(micRestartTimerRef.current);
+        micRestartTimerRef.current = null;
+      }
+      const run = () => {
+        micRestartTimerRef.current = null;
+        if (gen !== listenGenRef.current) return;
+        if (micIntentRef.current === "off") return;
+        if (micStartingRef.current) return;
+        if (
+          delayMs === 0 &&
+          lastMicStartAtRef.current > 0 &&
+          shouldDeferMicRestart({
+            alreadyStarting: false,
+            lastStartAt: lastMicStartAtRef.current,
+            now: Date.now(),
+          })
+        ) {
+          tryStart(MIC_RESTART_DEBOUNCE_MS);
+          return;
+        }
+        micStartingRef.current = true;
+        try {
+          rec.start();
+          lastMicStartAtRef.current = Date.now();
+          recognitionRef.current = rec;
+        } catch {
+          micStartingRef.current = false;
+          tryStart(MIC_RESTART_DEBOUNCE_MS);
+          return;
+        }
+        micStartingRef.current = false;
+      };
+      if (delayMs <= 0) {
+        run();
+        return;
+      }
+      micRestartTimerRef.current = window.setTimeout(run, delayMs);
+    };
+
     rec.onend = () => {
       if (gen !== listenGenRef.current) return;
       transcriptAtLastMatchRef.current = "";
       if (micAfterRecognitionEnded(micIntentRef.current) !== "restart") return;
-      const retryStart = (attempt: number) => {
-        if (gen !== listenGenRef.current) return;
-        if (micAfterRecognitionEnded(micIntentRef.current) !== "restart") return;
-        try {
-          rec.start();
-        } catch {
-          if (attempt >= 2) {
-            micIntentRef.current = "off";
-            listeningRef.current = false;
-            setListening(false);
-            return;
-          }
-          window.setTimeout(() => retryStart(attempt + 1), attempt === 0 ? 0 : 50);
-        }
-      };
-      retryStart(0);
+      tryStart(MIC_RESTART_DEBOUNCE_MS);
     };
-    try {
-      rec.start();
-      recognitionRef.current = rec;
-      micIntentRef.current = "live";
-      listeningRef.current = true;
-      setListening(true);
-      setListenError(null);
-      setIdlePaused(false);
-      setIdleModalOpen(false);
-      noteReaderActivityRef.current();
-    } catch {
+    micIntentRef.current = "live";
+    tryStart(0);
+    if (!recognitionRef.current) {
+      micIntentRef.current = "off";
       setListenError("Could not start the microphone. Try again, or tap Next.");
+      return;
     }
+    listeningRef.current = true;
+    setListening(true);
+    setListenError(null);
+    setIdlePaused(false);
+    setIdleModalOpen(false);
+    noteReaderActivityRef.current();
   }, []);
 
   const stopListening = useCallback(() => {
@@ -507,6 +562,11 @@ export function ReadAlongPlayer({
     micIntentRef.current = next.intent;
     listeningRef.current = false;
     listenGenRef.current += 1;
+    micStartingRef.current = false;
+    if (micRestartTimerRef.current != null) {
+      window.clearTimeout(micRestartTimerRef.current);
+      micRestartTimerRef.current = null;
+    }
     setListening(false);
     clearGrace();
     clearIdleTimer();
@@ -566,21 +626,32 @@ export function ReadAlongPlayer({
 
   const resumeMicAfterHelp = useCallback(() => {
     if (indexRef.current >= wordsRef.current.length) return;
-    if (micAfterHelpFinished(micIntentRef.current).command !== "start") return;
-    startListening();
+    const next = micAfterHelpFinished(micIntentRef.current);
+    micIntentRef.current = next.intent;
+    if (next.intent === "live") {
+      listeningRef.current = true;
+      setListening(true);
+      noteReaderActivityRef.current();
+    }
+    if (next.command === "start") {
+      startListening();
+    }
   }, [startListening]);
 
   const pauseMicForTts = useCallback(() => {
     const next = micPauseForTts(micIntentRef.current);
     micIntentRef.current = next.intent;
     clearGrace();
-    clearIdleTimer();
-    listenGenRef.current += 1;
     if (next.command === "stop") {
+      listenGenRef.current += 1;
+      if (micRestartTimerRef.current != null) {
+        window.clearTimeout(micRestartTimerRef.current);
+        micRestartTimerRef.current = null;
+      }
       recognitionRef.current?.stop();
+      recognitionRef.current = null;
     }
-    recognitionRef.current = null;
-  }, [clearGrace, clearIdleTimer]);
+  }, [clearGrace]);
 
   const clearNarration = useCallback(() => {
     setNarrating(false);
@@ -605,13 +676,15 @@ export function ReadAlongPlayer({
   const stopReadAloud = useCallback(() => {
     stopSpeaking();
     setNarrating(false);
-  }, []);
+    resumeMicAfterHelp();
+  }, [resumeMicAfterHelp]);
 
   const startReadAloud = useCallback(() => {
     if (!ttsOk || words.length === 0) return;
     stopSpeaking();
-    stopListening();
-    setListening(false);
+    if (micIntentRef.current === "live") {
+      pauseMicForTts();
+    }
     const from =
       remainingStoryWords(words, highlightIndex).length > 0
         ? highlightIndex
@@ -621,11 +694,15 @@ export function ReadAlongPlayer({
       rate: ttsSettings.rate,
       voiceURI: ttsSettings.voiceURI,
       onWord: (i) => setNarrationIndex(i),
-      onEnd: () => setNarrating(false),
+      onEnd: () => {
+        setNarrating(false);
+        resumeMicAfterHelp();
+      },
     });
   }, [
     highlightIndex,
-    stopListening,
+    pauseMicForTts,
+    resumeMicAfterHelp,
     ttsOk,
     ttsSettings.rate,
     ttsSettings.voiceURI,
@@ -733,6 +810,11 @@ export function ReadAlongPlayer({
     return () => {
       listenGenRef.current += 1;
       micIntentRef.current = "off";
+      micStartingRef.current = false;
+      if (micRestartTimerRef.current != null) {
+        window.clearTimeout(micRestartTimerRef.current);
+        micRestartTimerRef.current = null;
+      }
       recognitionRef.current?.abort();
       stopSpeaking();
       if (graceTimerRef.current != null) {
@@ -792,10 +874,16 @@ export function ReadAlongPlayer({
   const vocabExampleWords = splitHighlightWords(vocabExample);
 
   function speakVocab() {
+    if (micIntentRef.current === "live") {
+      pauseMicForTts();
+    }
     setVocabHighlight(0);
     speakConfigured(vocabSpokenText, {
       onBoundaryWord: (i) => setVocabHighlight(i),
-      onEnd: () => setVocabHighlight(-1),
+      onEnd: () => {
+        setVocabHighlight(-1);
+        resumeMicAfterHelp();
+      },
     });
   }
 
@@ -1019,7 +1107,14 @@ export function ReadAlongPlayer({
                         .filter(Boolean)
                         .join(" ")}
                       onClick={() => {
-                        if (ttsOk) speakConfigured(normalizeDisplay(word));
+                        if (ttsOk) {
+                          if (micIntentRef.current === "live") {
+                            pauseMicForTts();
+                          }
+                          speakConfigured(normalizeDisplay(word), {
+                            onEnd: () => resumeMicAfterHelp(),
+                          });
+                        }
                         void openVocab(word);
                       }}
                     >
@@ -1055,7 +1150,7 @@ export function ReadAlongPlayer({
             onClick={leaveStory}
             title="Switch story"
           >
-            Back
+            {READ_ALONG_DOCK_BACK}
           </Button>
           {inPractice ? (
             remainingPractice.length === 0 ? (
@@ -1123,7 +1218,7 @@ export function ReadAlongPlayer({
                 }
                 title="Back a word"
               >
-                Backup
+                {READ_ALONG_DOCK_BACKUP}
               </Button>
               <Button
                 size="lg"
@@ -1136,82 +1231,51 @@ export function ReadAlongPlayer({
                 }}
                 disabled={!current}
               >
-                Next
+                {READ_ALONG_DOCK_NEXT}
               </Button>
-              {current && ttsOk ? (
-                <div className="read-along-dock-hear-group">
-                  <Button
-                    size="lg"
-                    className="read-along-dock-btn"
-                    variant="ghost"
-                    onClick={() => {
-                      if (!current) return;
-                      clearNarration();
-                      if (micIntentRef.current === "live") {
-                        pauseMicForTts();
-                      }
-                      speakConfigured(normalizeDisplay(current), {
-                        onEnd: () => resumeMicAfterHelp(),
-                      });
-                    }}
-                  >
-                    Hear this word
-                  </Button>
-                  <Button
-                    size="lg"
-                    className="read-along-dock-btn"
-                    variant={narrating ? "secondary" : "ghost"}
-                    onClick={() => {
-                      if (narrating) {
-                        stopReadAloud();
-                        return;
-                      }
-                      startReadAloud();
-                    }}
-                    disabled={words.length === 0}
-                  >
-                    {narrating ? "Stop" : "Read to me"}
-                  </Button>
-                  <Button
-                    size="lg"
-                    className="read-along-dock-btn"
-                    variant="ghost"
-                    onClick={() => setTtsSettingsOpen(true)}
-                    title="Voice and speed"
-                  >
-                    <GearIcon />
-                    Settings
-                  </Button>
-                </div>
-              ) : ttsOk ? (
-                <div className="read-along-dock-hear-group">
-                  <Button
-                    size="lg"
-                    className="read-along-dock-btn"
-                    variant={narrating ? "secondary" : "ghost"}
-                    onClick={() => {
-                      if (narrating) {
-                        stopReadAloud();
-                        return;
-                      }
-                      startReadAloud();
-                    }}
-                    disabled={words.length === 0}
-                  >
-                    {narrating ? "Stop" : "Read to me"}
-                  </Button>
-                  <Button
-                    size="lg"
-                    className="read-along-dock-btn"
-                    variant="ghost"
-                    onClick={() => setTtsSettingsOpen(true)}
-                    title="Voice and speed"
-                  >
-                    <GearIcon />
-                    Settings
-                  </Button>
-                </div>
-              ) : null}
+              <Button
+                size="lg"
+                className="read-along-dock-btn"
+                variant="ghost"
+                onClick={() => {
+                  if (!current) return;
+                  clearNarration();
+                  if (micIntentRef.current === "live") {
+                    pauseMicForTts();
+                  }
+                  speakConfigured(normalizeDisplay(current), {
+                    onEnd: () => resumeMicAfterHelp(),
+                  });
+                }}
+                disabled={!current || !ttsOk}
+              >
+                {READ_ALONG_DOCK_HEAR_WORD}
+              </Button>
+              <Button
+                size="lg"
+                className="read-along-dock-btn"
+                variant={narrating ? "secondary" : "ghost"}
+                onClick={() => {
+                  if (narrating) {
+                    stopReadAloud();
+                    return;
+                  }
+                  startReadAloud();
+                }}
+                disabled={words.length === 0 || !ttsOk}
+              >
+                {narrating ? READ_ALONG_DOCK_STOP : READ_ALONG_DOCK_READ_TO_ME}
+              </Button>
+              <Button
+                size="lg"
+                className="read-along-dock-btn"
+                variant="ghost"
+                onClick={() => setTtsSettingsOpen(true)}
+                title="Voice and speed"
+              >
+                <GearIcon />
+                {READ_ALONG_DOCK_SETTINGS}
+              </Button>
               {storyFinished ? (
                 <Button
                   size="lg"

@@ -17,11 +17,13 @@ import {
   micAfterRecognitionEnded,
   micAfterUserStop,
   micPauseForTts,
+  MIC_RESTART_DEBOUNCE_MS,
   parseTtsRate,
   pickTtsVoice,
   planMissTry,
   preferUsEnglishVoice,
   remainingStoryWords,
+  shouldDeferMicRestart,
   ttsRateForPreset,
   unmatchedTranscript,
   wordsMatch,
@@ -40,34 +42,60 @@ describe("read-along mic session", () => {
     assert.equal(next.command, "none");
   });
 
-  it("pauses the mic only while TTS is speaking", () => {
+  it("mutes analysis during TTS without stopping the recognizer", () => {
     const next = micPauseForTts("live");
     assert.equal(next.intent, "paused");
-    assert.equal(next.command, "stop");
+    assert.equal(next.command, "none");
     const off = micPauseForTts("off");
     assert.equal(off.intent, "off");
     assert.equal(off.command, "none");
   });
 
-  it("restarts immediately when Chrome ends a live session", () => {
+  it("restarts only when Play is still on and Chrome ended the engine", () => {
     assert.equal(micAfterRecognitionEnded("live"), "restart");
-  });
-
-  it("does not restart while paused for TTS", () => {
-    assert.equal(micAfterRecognitionEnded("paused"), "stay_off");
+    assert.equal(micAfterRecognitionEnded("paused"), "restart");
     assert.equal(micAfterRecognitionEnded("off"), "stay_off");
   });
 
-  it("resumes listening after help finishes", () => {
+  it("unmutes after TTS without calling start again", () => {
     const next = micAfterHelpFinished("paused");
     assert.equal(next.intent, "live");
-    assert.equal(next.command, "start");
+    assert.equal(next.command, "none");
+    const live = micAfterHelpFinished("live");
+    assert.equal(live.command, "none");
   });
 
-  it("stays off when the user tapped Stop", () => {
+  it("stays off when the user tapped Pause", () => {
     const next = micAfterUserStop();
     assert.equal(next.intent, "off");
     assert.equal(next.command, "stop");
+  });
+
+  it("defers a restart while start is already in flight or inside the debounce window", () => {
+    assert.equal(
+      shouldDeferMicRestart({
+        alreadyStarting: true,
+        lastStartAt: 0,
+        now: 10_000,
+      }),
+      true,
+    );
+    assert.equal(
+      shouldDeferMicRestart({
+        alreadyStarting: false,
+        lastStartAt: 1000,
+        now: 1000 + 200,
+      }),
+      true,
+    );
+    assert.equal(
+      shouldDeferMicRestart({
+        alreadyStarting: false,
+        lastStartAt: 1000,
+        now: 1000 + MIC_RESTART_DEBOUNCE_MS,
+      }),
+      false,
+    );
   });
 });
 
@@ -129,7 +157,22 @@ describe("farthestMatchedIndex sequential lookahead", () => {
   it("does not skip the current word to match a later duplicate", () => {
     assert.equal(farthestMatchedIndex("the", LINE, 0), 0);
     assert.equal(farthestMatchedIndex("sat", LINE, 0), -1);
-    assert.equal(farthestMatchedIndex("on the mat", LINE, 0), -1);
+    // "the" was said, so credit current "the" — do not jump to the later "the"
+    assert.equal(farthestMatchedIndex("on the mat", LINE, 0), 0);
+  });
+
+  it("credits the current word when extra words surround it", () => {
+    assert.equal(farthestMatchedIndex("um a tin can hey", ["tin", "can"], 0), 1);
+    assert.equal(farthestMatchedIndex("hey the tin", ["tin", "the"], 0), 0);
+  });
+
+  it("credits a then tin then can from hey a tin can", () => {
+    assert.equal(farthestMatchedIndex("hey a tin can", ["a", "tin", "can"], 0), 2);
+  });
+
+  it("stops when the middle unread word was not said", () => {
+    assert.equal(farthestMatchedIndex("the sat", LINE, 0), 0);
+    assert.equal(farthestMatchedIndex("hey a can", ["a", "tin", "can"], 0), 0);
   });
 
   it("skips punctuation-only tokens in the lookahead window", () => {
@@ -187,6 +230,7 @@ describe("wordsMatch target aliases", () => {
     assert.equal(wordsMatch("a", "ay"), true);
     assert.equal(wordsMatch("a", "uhh"), true);
     assert.equal(wordsMatch("a", "cat"), false);
+    assert.equal(wordsMatch("a", "the"), false);
   });
 
   it("accepts tin aliases only when the expected word is tin", () => {
@@ -199,6 +243,38 @@ describe("wordsMatch target aliases", () => {
     assert.equal(wordsMatch("in", "in"), true);
     assert.equal(wordsMatch("in", "tin"), false);
     assert.equal(wordsMatch("ten", "tin"), false);
+  });
+});
+
+describe("wordsMatch kid pronunciation", () => {
+  it("accepts goin for going and runnin for running", () => {
+    assert.equal(wordsMatch("going", "goin"), true);
+    assert.equal(wordsMatch("running", "runnin"), true);
+  });
+
+  it("accepts da/duh for the and wif for with", () => {
+    assert.equal(wordsMatch("the", "da"), true);
+    assert.equal(wordsMatch("the", "duh"), true);
+    assert.equal(wordsMatch("with", "wif"), true);
+    assert.equal(wordsMatch("them", "dem"), true);
+    assert.equal(wordsMatch("that", "dat"), true);
+    assert.equal(wordsMatch("this", "dis"), true);
+  });
+
+  it("accepts a 4-letter word off by one letter", () => {
+    assert.equal(wordsMatch("jump", "jomp"), true);
+    assert.equal(wordsMatch("frog", "frig"), true);
+  });
+
+  it("accepts contractions without apostrophes", () => {
+    assert.equal(wordsMatch("I'm", "im"), true);
+    assert.equal(wordsMatch("don't", "dont"), true);
+  });
+
+  it("does not let short function words collapse into each other", () => {
+    assert.equal(wordsMatch("a", "the"), false);
+    assert.equal(wordsMatch("and", "an"), false);
+    assert.equal(wordsMatch("cat", "sat"), false);
   });
 });
 
