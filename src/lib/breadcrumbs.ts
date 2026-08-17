@@ -390,10 +390,10 @@ const ROUTES: RouteRule[] = [
     ],
   },
   {
-    test: exact("/admin/knowledge-base"),
+    test: exact("/admin/speech-reports"),
     build: () => [
       { label: "Admin", href: "/admin" },
-      { label: "Manage KB" },
+      { label: "Speech reports" },
     ],
   },
 

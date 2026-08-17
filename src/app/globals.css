@@ -867,6 +867,20 @@ html {
   margin: 0 auto;
 }
 
+.read-along-dock-hear-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.7rem;
+}
+
+@media (min-width: 640px) {
+  .read-along-dock-hear-group {
+    margin-left: auto;
+  }
+}
+
 .read-along-dock-btn,
 .read-along-kid-btn {
   min-height: 3.5rem;

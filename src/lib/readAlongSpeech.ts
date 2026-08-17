@@ -1,5 +1,10 @@
 export const LOOKAHEAD_WORDS = 5;
 export const SPEECH_LOCALE = "en-US";
+export const TTS_RATE_MIN = 0.7;
+export const TTS_RATE_MAX = 1.4;
+export const TTS_RATE_DEFAULT = 0.9;
+export const TTS_STORAGE_VOICE = "hsa.readAlong.voiceURI";
+export const TTS_STORAGE_RATE = "hsa.readAlong.rate";
 
 export function normalizeWord(raw: string): string {
   return raw
@@ -85,12 +90,28 @@ function matchKey(raw: string): string {
   return HOMOPHONE_CANON.get(folded) ?? folded;
 }
 
+/** Target-specific ASR aliases. Never apply globally (e.g. "in" ≠ "tin"). */
+const TARGET_ALIASES: Record<string, readonly string[]> = {
+  a: ["a", "uh", "ah", "ay", "uhh"],
+  tin: ["tin", "tinn", "tyn", "ten", "in"],
+};
+
+function isDroppedArticle(word: string): boolean {
+  return foldWord(word) === "a";
+}
+
 export function wordsMatch(expected: string, heard: string): boolean {
+  const eFold = foldWord(expected);
+  const hFold = foldWord(heard);
+  if (!eFold) return true;
+  if (!hFold) return false;
+  const aliases = TARGET_ALIASES[eFold];
+  if (aliases?.includes(hFold)) return true;
   const e = matchKey(expected);
   const h = matchKey(heard);
-  if (!e) return true;
-  if (!h) return false;
   if (h === e) return true;
+  // Short targets: exact/homophone/alias only so tin↔in is not bidirectional.
+  if (eFold.length <= 3) return false;
   if (e.length >= 4 && h.length >= 4 && (h.includes(e) || e.includes(h))) {
     return true;
   }
@@ -160,6 +181,16 @@ export function matchLookaheadSpeech(
         lastIndex = expected.index;
         tokenIdx += 1;
         consumedTokens = tokenIdx;
+        found = true;
+        break;
+      }
+      const nextExpected = window[w + 1];
+      if (
+        isDroppedArticle(expected.word) &&
+        nextExpected &&
+        wordsMatch(nextExpected.word, token)
+      ) {
+        lastIndex = expected.index;
         found = true;
         break;
       }
@@ -322,6 +353,86 @@ export function preferUsEnglishVoice<T extends { lang: string }>(
   return voices.find((voice) => isUsEnglishLang(voice.lang)) ?? null;
 }
 
+export function clampTtsRate(rate: number): number {
+  if (!Number.isFinite(rate)) return TTS_RATE_DEFAULT;
+  return Math.min(TTS_RATE_MAX, Math.max(TTS_RATE_MIN, rate));
+}
+
+export function parseTtsRate(raw: string | null | undefined): number {
+  if (raw == null || raw.trim() === "") return TTS_RATE_DEFAULT;
+  return clampTtsRate(Number(raw));
+}
+
+export function ttsRateForPreset(
+  preset: "slow" | "normal" | "fast",
+): number {
+  if (preset === "slow") return TTS_RATE_MIN;
+  if (preset === "fast") return 1.25;
+  return TTS_RATE_DEFAULT;
+}
+
+export function listEnglishVoices<T extends { lang: string }>(
+  voices: readonly T[],
+): T[] {
+  return voices.filter((voice) =>
+    voice.lang.toLowerCase().replace(/_/g, "-").startsWith("en"),
+  );
+}
+
+export function pickTtsVoice<T extends { lang: string; voiceURI?: string }>(
+  voices: readonly T[],
+  voiceURI: string,
+): T | null {
+  if (voiceURI) {
+    const saved = voices.find((voice) => voice.voiceURI === voiceURI);
+    if (saved) return saved;
+  }
+  return preferUsEnglishVoice(voices);
+}
+
+export function remainingStoryWords(
+  words: string[],
+  startIndex: number,
+): string[] {
+  return words.slice(Math.max(0, startIndex));
+}
+
+export function loadReadAlongTtsSettings(): {
+  voiceURI: string;
+  rate: number;
+} {
+  if (typeof window === "undefined") {
+    return { voiceURI: "", rate: TTS_RATE_DEFAULT };
+  }
+  try {
+    return {
+      voiceURI: window.localStorage.getItem(TTS_STORAGE_VOICE) ?? "",
+      rate: parseTtsRate(window.localStorage.getItem(TTS_STORAGE_RATE)),
+    };
+  } catch {
+    return { voiceURI: "", rate: TTS_RATE_DEFAULT };
+  }
+}
+
+export function saveReadAlongTtsSettings(settings: {
+  voiceURI: string;
+  rate: number;
+}): { voiceURI: string; rate: number } {
+  const next = {
+    voiceURI: settings.voiceURI,
+    rate: clampTtsRate(settings.rate),
+  };
+  if (typeof window !== "undefined") {
+    try {
+      window.localStorage.setItem(TTS_STORAGE_VOICE, next.voiceURI);
+      window.localStorage.setItem(TTS_STORAGE_RATE, String(next.rate));
+    } catch {
+      // ignore quota / private mode
+    }
+  }
+  return next;
+}
+
 export function configureReadAlongRecognition(rec: {
   lang: string;
   continuous: boolean;
@@ -379,6 +490,7 @@ export function ttsSupported(): boolean {
 }
 
 let speakGeneration = 0;
+let storyReadGen = 0;
 let highlightTimer: number | null = null;
 let highlightInterval: number | null = null;
 
@@ -393,10 +505,18 @@ function clearHighlightTimers() {
   }
 }
 
+function resolveUtteranceVoice(
+  voiceURI: string | undefined,
+): SpeechSynthesisVoice | null {
+  const voices = window.speechSynthesis.getVoices();
+  return pickTtsVoice(voices, voiceURI ?? "");
+}
+
 export function speakText(
   text: string,
   opts?: {
     rate?: number;
+    voiceURI?: string;
     onBoundaryWord?: (wordIndex: number) => void;
     onEnd?: () => void;
   },
@@ -411,10 +531,10 @@ export function speakText(
   window.speechSynthesis.cancel();
 
   const utterance = new SpeechSynthesisUtterance(text);
-  utterance.rate = opts?.rate ?? 0.9;
+  utterance.rate = clampTtsRate(opts?.rate ?? TTS_RATE_DEFAULT);
   utterance.lang = SPEECH_LOCALE;
-  const usVoice = preferUsEnglishVoice(window.speechSynthesis.getVoices());
-  if (usVoice) utterance.voice = usVoice;
+  const voice = resolveUtteranceVoice(opts?.voiceURI);
+  if (voice) utterance.voice = voice;
 
   const onDone = () => {
     if (gen !== speakGeneration) return;
@@ -462,8 +582,41 @@ export function speakText(
   window.speechSynthesis.speak(utterance);
 }
 
+export function speakStoryFrom(
+  words: string[],
+  startIndex: number,
+  opts?: {
+    rate?: number;
+    voiceURI?: string;
+    onWord?: (index: number) => void;
+    onEnd?: () => void;
+  },
+): void {
+  const gen = ++storyReadGen;
+  const speakAt = (i: number) => {
+    if (gen !== storyReadGen) return;
+    if (i >= words.length) {
+      opts?.onEnd?.();
+      return;
+    }
+    const raw = words[i];
+    if (!raw || isSkippableToken(raw)) {
+      speakAt(i + 1);
+      return;
+    }
+    opts?.onWord?.(i);
+    speakText(spokenWordForTts(raw), {
+      rate: opts?.rate,
+      voiceURI: opts?.voiceURI,
+      onEnd: () => speakAt(i + 1),
+    });
+  };
+  speakAt(Math.max(0, startIndex));
+}
+
 export function stopSpeaking(): void {
   speakGeneration += 1;
+  storyReadGen += 1;
   clearHighlightTimers();
   if (typeof window !== "undefined" && "speechSynthesis" in window) {
     window.speechSynthesis.cancel();

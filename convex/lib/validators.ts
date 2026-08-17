@@ -350,3 +350,62 @@ export const dictionaryEntryDocValidator = v.object({
   createdAt: v.number(),
   updatedAt: v.optional(v.number()),
 });
+
+export const speechReporterRoleValidator = v.union(
+  v.literal("superAdmin"),
+  v.literal("family_main"),
+  v.literal("family_admin"),
+  v.literal("parent"),
+  v.literal("teacher"),
+  v.literal("tutor"),
+);
+
+export const speechReportStatusValidator = v.union(
+  v.literal("open"),
+  v.literal("testing"),
+  v.literal("approved"),
+  v.literal("rejected"),
+  v.literal("ticketed"),
+);
+
+export const speechTicketStatusValidator = v.union(
+  v.literal("open"),
+  v.literal("in_progress"),
+  v.literal("resolved"),
+);
+
+export const speechRecognitionSampleValidator = v.object({
+  transcript: v.string(),
+  at: v.number(),
+});
+
+export const speechWordReportDocValidator = v.object({
+  _id: v.id("speechWordReports"),
+  _creationTime: v.number(),
+  word: v.string(),
+  normalizedWord: v.string(),
+  reportedByUserId: v.id("users"),
+  reporterRole: speechReporterRoleValidator,
+  studentId: v.optional(v.id("students")),
+  sessionId: v.optional(v.id("readAlongSessions")),
+  storyId: v.optional(v.id("readAlongStories")),
+  familyId: v.optional(v.id("families")),
+  status: speechReportStatusValidator,
+  recognitionSamples: v.optional(v.array(speechRecognitionSampleValidator)),
+  notes: v.optional(v.string()),
+  ticketId: v.optional(v.id("speechDevTickets")),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+});
+
+export const speechDevTicketDocValidator = v.object({
+  _id: v.id("speechDevTickets"),
+  _creationTime: v.number(),
+  title: v.string(),
+  body: v.string(),
+  sourceReportId: v.optional(v.id("speechWordReports")),
+  status: speechTicketStatusValidator,
+  createdByAdminId: v.id("users"),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+});

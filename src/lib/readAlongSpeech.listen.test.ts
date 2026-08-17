@@ -2,19 +2,29 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   SPEECH_LOCALE,
+  TTS_RATE_DEFAULT,
+  TTS_RATE_MAX,
+  TTS_RATE_MIN,
   advanceCreditedTranscript,
+  clampTtsRate,
   configureReadAlongRecognition,
   farthestMatchedIndex,
   hasNewUnmatchedSpeech,
+  listEnglishVoices,
   micAfterCorrectMatch,
   micAfterHelpFinished,
   micAfterMiss,
   micAfterRecognitionEnded,
   micAfterUserStop,
   micPauseForTts,
+  parseTtsRate,
+  pickTtsVoice,
   planMissTry,
   preferUsEnglishVoice,
+  remainingStoryWords,
+  ttsRateForPreset,
   unmatchedTranscript,
+  wordsMatch,
 } from "./readAlongSpeech.ts";
 
 describe("read-along mic session", () => {
@@ -131,6 +141,65 @@ describe("farthestMatchedIndex sequential lookahead", () => {
     assert.equal(farthestMatchedIndex("the cat", LINE, 0), 1);
     assert.equal(farthestMatchedIndex("the on", LINE, 0), 0);
   });
+
+  it("credits American English article a when ASR hears uh/ah/ay/uhh", () => {
+    const words = ["a", "tin", "can"];
+    assert.equal(farthestMatchedIndex("uh", words, 0), 0);
+    assert.equal(farthestMatchedIndex("ah tin", words, 0), 1);
+    assert.equal(farthestMatchedIndex("ay tin can", words, 0), 2);
+    assert.equal(farthestMatchedIndex("uhh tin", words, 0), 1);
+  });
+
+  it("skips a dropped article a when the next word already matched", () => {
+    const words = ["a", "tin", "can"];
+    assert.equal(farthestMatchedIndex("tin", words, 0), 1);
+    assert.equal(farthestMatchedIndex("tin can", words, 0), 2);
+  });
+
+  it("does not skip unread words after a just because a later word matched", () => {
+    const words = ["a", "cat", "tin"];
+    assert.equal(farthestMatchedIndex("tin", words, 0), -1);
+    assert.equal(farthestMatchedIndex("sat", words, 0), -1);
+  });
+
+  it("credits tin when ASR hears tin/tinn/tyn/ten/in only for that target", () => {
+    const words = ["the", "tin", "can"];
+    assert.equal(farthestMatchedIndex("tin", words, 1), 1);
+    assert.equal(farthestMatchedIndex("tinn", words, 1), 1);
+    assert.equal(farthestMatchedIndex("tyn", words, 1), 1);
+    assert.equal(farthestMatchedIndex("ten", words, 1), 1);
+    assert.equal(farthestMatchedIndex("in", words, 1), 1);
+    assert.equal(farthestMatchedIndex("tin.", words, 1), 1);
+  });
+
+  it("does not treat heard in as tin when the unread word is in", () => {
+    const words = ["go", "in", "the"];
+    assert.equal(farthestMatchedIndex("in", words, 1), 1);
+    assert.equal(farthestMatchedIndex("tin", words, 1), -1);
+  });
+});
+
+describe("wordsMatch target aliases", () => {
+  it("accepts common ASR variants for article a", () => {
+    assert.equal(wordsMatch("a", "a"), true);
+    assert.equal(wordsMatch("a", "uh"), true);
+    assert.equal(wordsMatch("a", "ah"), true);
+    assert.equal(wordsMatch("a", "ay"), true);
+    assert.equal(wordsMatch("a", "uhh"), true);
+    assert.equal(wordsMatch("a", "cat"), false);
+  });
+
+  it("accepts tin aliases only when the expected word is tin", () => {
+    assert.equal(wordsMatch("tin", "tin"), true);
+    assert.equal(wordsMatch("tin", "tinn"), true);
+    assert.equal(wordsMatch("tin", "tyn"), true);
+    assert.equal(wordsMatch("tin", "ten"), true);
+    assert.equal(wordsMatch("tin", "in"), true);
+    assert.equal(wordsMatch("tin", "tin."), true);
+    assert.equal(wordsMatch("in", "in"), true);
+    assert.equal(wordsMatch("in", "tin"), false);
+    assert.equal(wordsMatch("ten", "tin"), false);
+  });
 });
 
 describe("unmatchedTranscript", () => {
@@ -190,5 +259,41 @@ describe("American English speech", () => {
       preferUsEnglishVoice([{ lang: "en-GB", name: "Daniel" }]),
       null,
     );
+  });
+});
+
+describe("read-aloud TTS settings", () => {
+  it("clamps rate to the kid-friendly range", () => {
+    assert.equal(clampTtsRate(0.2), TTS_RATE_MIN);
+    assert.equal(clampTtsRate(2), TTS_RATE_MAX);
+    assert.equal(clampTtsRate(1), 1);
+    assert.equal(parseTtsRate("nope"), TTS_RATE_DEFAULT);
+  });
+
+  it("maps slow/normal/fast presets", () => {
+    assert.equal(ttsRateForPreset("slow"), 0.7);
+    assert.equal(ttsRateForPreset("normal"), TTS_RATE_DEFAULT);
+    assert.equal(ttsRateForPreset("fast"), 1.25);
+  });
+
+  it("lists English voices first and picks a saved URI before en-US default", () => {
+    const voices = [
+      { lang: "es-ES", name: "Monica", voiceURI: "es" },
+      { lang: "en-GB", name: "Daniel", voiceURI: "gb" },
+      { lang: "en-US", name: "Samantha", voiceURI: "us" },
+    ];
+    const listed = listEnglishVoices(voices);
+    assert.equal(listed[0]?.voiceURI, "gb");
+    assert.equal(listed[1]?.voiceURI, "us");
+    assert.equal(pickTtsVoice(voices, "gb")?.voiceURI, "gb");
+    assert.equal(pickTtsVoice(voices, "")?.voiceURI, "us");
+  });
+
+  it("speaks remaining story words from the current highlight", () => {
+    assert.deepEqual(remainingStoryWords(["a", "tin", "can"], 1), [
+      "tin",
+      "can",
+    ]);
+    assert.deepEqual(remainingStoryWords(["a", "tin"], 0), ["a", "tin"]);
   });
 });

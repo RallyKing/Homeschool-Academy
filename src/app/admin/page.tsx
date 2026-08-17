@@ -333,6 +333,11 @@ function AdminInner() {
           KB
         </Button>
       </Link>
+      <Link href="/admin/speech-reports">
+        <Button variant="secondary" size="sm">
+          Speech reports
+        </Button>
+      </Link>
     </div>
   );
 

@@ -12,6 +12,7 @@ import {
   Message,
   Modal,
   Section,
+  Select,
 } from "@/components/ui";
 import { localIsoDate, localWeekStart } from "@/lib/dates";
 import {
@@ -36,25 +37,33 @@ import {
 } from "@/lib/leaveReadAlong";
 import {
   advanceCreditedTranscript,
+  clampTtsRate,
   configureReadAlongRecognition,
   getSpeechRecognitionCtor,
   hasNewUnmatchedSpeech,
   isSkippableToken,
+  listEnglishVoices,
+  loadReadAlongTtsSettings,
   matchLookaheadSpeech,
   micAfterHelpFinished,
   micAfterRecognitionEnded,
   micAfterUserStop,
   micPauseForTts,
-  planMissTry,
+  remainingStoryWords,
+  saveReadAlongTtsSettings,
+  speakStoryFrom,
   speakText,
   speechRecognitionSupported,
   splitHighlightWords,
   stopSpeaking,
+  ttsRateForPreset,
   ttsSupported,
   unmatchedTranscript,
+  planMissTry,
   type MicIntent,
 } from "@/lib/readAlongSpeech";
 import { DEFINITION_UNAVAILABLE } from "../../convex/lib/dictionaryCore";
+import { ReadAlongReportWordModal } from "@/components/ReadAlongReportWordModal";
 
 type WordEvent = {
   wordIndex: number;
@@ -121,6 +130,14 @@ export function ReadAlongPlayer({
     Record<number, WordEvent["result"]>
   >({});
   const [hiddenFrom, setHiddenFrom] = useState<number | null>(null);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [ttsSettingsOpen, setTtsSettingsOpen] = useState(false);
+  const [ttsSettings, setTtsSettings] = useState(loadReadAlongTtsSettings);
+  const [ttsVoices, setTtsVoices] = useState<
+    Array<{ name: string; lang: string; voiceURI: string }>
+  >([]);
+  const [narrating, setNarrating] = useState(false);
+  const [narrationIndex, setNarrationIndex] = useState(-1);
 
   const pendingRef = useRef<WordEvent[]>([]);
   const indexRef = useRef(0);
@@ -184,6 +201,8 @@ export function ReadAlongPlayer({
   );
 
   const effectiveIndex = skipSkippable(index);
+  const highlightIndex =
+    narrationIndex >= 0 ? narrationIndex : effectiveIndex;
 
   useEffect(() => {
     indexRef.current = effectiveIndex;
@@ -204,6 +223,23 @@ export function ReadAlongPlayer({
       setIdleCustomOpen(true);
       setIdleCustomDraft(String(sec));
     }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !ttsSupported()) return;
+    const loadVoices = () => {
+      const voices = window.speechSynthesis.getVoices().map((voice) => ({
+        name: voice.name,
+        lang: voice.lang,
+        voiceURI: voice.voiceURI,
+      }));
+      setTtsVoices(voices);
+    };
+    loadVoices();
+    window.speechSynthesis.addEventListener("voiceschanged", loadVoices);
+    return () => {
+      window.speechSynthesis.removeEventListener("voiceschanged", loadVoices);
+    };
   }, []);
 
   /* Hydrate resume position once when the session document arrives. */
@@ -381,9 +417,14 @@ export function ReadAlongPlayer({
     setHeard("");
     clearGrace();
     noteReaderActivityRef.current();
+    setNarrating(false);
+    setNarrationIndex(-1);
   }, [clearGrace, localMarks]);
 
   const startListening = useCallback(() => {
+    stopSpeaking();
+    setNarrating(false);
+    setNarrationIndex(-1);
     const Ctor = getSpeechRecognitionCtor();
     if (!Ctor) {
       setListenError(
@@ -541,6 +582,56 @@ export function ReadAlongPlayer({
     recognitionRef.current = null;
   }, [clearGrace, clearIdleTimer]);
 
+  const clearNarration = useCallback(() => {
+    setNarrating(false);
+    setNarrationIndex(-1);
+  }, []);
+
+  const speakConfigured = useCallback(
+    (
+      text: string,
+      extra?: { onEnd?: () => void; onBoundaryWord?: (i: number) => void },
+    ) => {
+      speakText(text, {
+        rate: ttsSettings.rate,
+        voiceURI: ttsSettings.voiceURI,
+        onEnd: extra?.onEnd,
+        onBoundaryWord: extra?.onBoundaryWord,
+      });
+    },
+    [ttsSettings.rate, ttsSettings.voiceURI],
+  );
+
+  const stopReadAloud = useCallback(() => {
+    stopSpeaking();
+    setNarrating(false);
+  }, []);
+
+  const startReadAloud = useCallback(() => {
+    if (!ttsOk || words.length === 0) return;
+    stopSpeaking();
+    stopListening();
+    setListening(false);
+    const from =
+      remainingStoryWords(words, highlightIndex).length > 0
+        ? highlightIndex
+        : 0;
+    setNarrating(true);
+    speakStoryFrom(words, from, {
+      rate: ttsSettings.rate,
+      voiceURI: ttsSettings.voiceURI,
+      onWord: (i) => setNarrationIndex(i),
+      onEnd: () => setNarrating(false),
+    });
+  }, [
+    highlightIndex,
+    stopListening,
+    ttsOk,
+    ttsSettings.rate,
+    ttsSettings.voiceURI,
+    words,
+  ]);
+
   const handleMiss = useCallback(() => {
     const i = indexRef.current;
     const word = words[i];
@@ -561,7 +652,7 @@ export function ReadAlongPlayer({
     const speakThen = (after: () => void) => {
       pauseMicForTts();
       if (ttsOk) {
-        speakText(plan.spokenWord, { onEnd: after });
+        speakConfigured(plan.spokenWord, { onEnd: after });
         return;
       }
       after();
@@ -584,6 +675,7 @@ export function ReadAlongPlayer({
     notify,
     pauseMicForTts,
     resumeMicAfterHelp,
+    speakConfigured,
     ttsOk,
     words,
   ]);
@@ -701,8 +793,7 @@ export function ReadAlongPlayer({
 
   function speakVocab() {
     setVocabHighlight(0);
-    speakText(vocabSpokenText, {
-      rate: 0.85,
+    speakConfigured(vocabSpokenText, {
       onBoundaryWord: (i) => setVocabHighlight(i),
       onEnd: () => setVocabHighlight(-1),
     });
@@ -907,7 +998,7 @@ export function ReadAlongPlayer({
           <div className="read-along-page rounded-[var(--radius-xl)] border border-[var(--border)] bg-[var(--surface)] p-5 sm:p-7">
             <p className="read-along-text">
               {words.map((word, i) => {
-                const currentWord = i === effectiveIndex;
+                const currentWord = i === highlightIndex;
                 const result = visibleWordResult(
                   i,
                   localMarks,
@@ -928,7 +1019,7 @@ export function ReadAlongPlayer({
                         .filter(Boolean)
                         .join(" ")}
                       onClick={() => {
-                        if (ttsOk) speakText(normalizeDisplay(word));
+                        if (ttsOk) speakConfigured(normalizeDisplay(word));
                         void openVocab(word);
                       }}
                     >
@@ -981,7 +1072,7 @@ export function ReadAlongPlayer({
                 <Button
                   size="lg"
                   className="read-along-dock-btn"
-                  onClick={() => practiceWord && speakText(practiceWord)}
+                  onClick={() => practiceWord && speakConfigured(practiceWord)}
                   variant="secondary"
                   disabled={!ttsOk}
                 >
@@ -1040,6 +1131,7 @@ export function ReadAlongPlayer({
                 variant="secondary"
                 onClick={() => {
                   if (!current) return;
+                  clearNarration();
                   handleMatch();
                 }}
                 disabled={!current}
@@ -1047,22 +1139,78 @@ export function ReadAlongPlayer({
                 Next
               </Button>
               {current && ttsOk ? (
-                <Button
-                  size="lg"
-                  className="read-along-dock-btn"
-                  variant="ghost"
-                  onClick={() => {
-                    if (!current) return;
-                    if (micIntentRef.current === "live") {
-                      pauseMicForTts();
-                    }
-                    speakText(normalizeDisplay(current), {
-                      onEnd: () => resumeMicAfterHelp(),
-                    });
-                  }}
-                >
-                  Hear this word
-                </Button>
+                <div className="read-along-dock-hear-group">
+                  <Button
+                    size="lg"
+                    className="read-along-dock-btn"
+                    variant="ghost"
+                    onClick={() => {
+                      if (!current) return;
+                      clearNarration();
+                      if (micIntentRef.current === "live") {
+                        pauseMicForTts();
+                      }
+                      speakConfigured(normalizeDisplay(current), {
+                        onEnd: () => resumeMicAfterHelp(),
+                      });
+                    }}
+                  >
+                    Hear this word
+                  </Button>
+                  <Button
+                    size="lg"
+                    className="read-along-dock-btn"
+                    variant={narrating ? "secondary" : "ghost"}
+                    onClick={() => {
+                      if (narrating) {
+                        stopReadAloud();
+                        return;
+                      }
+                      startReadAloud();
+                    }}
+                    disabled={words.length === 0}
+                  >
+                    {narrating ? "Stop" : "Read to me"}
+                  </Button>
+                  <Button
+                    size="lg"
+                    className="read-along-dock-btn"
+                    variant="ghost"
+                    onClick={() => setTtsSettingsOpen(true)}
+                    title="Voice and speed"
+                  >
+                    <GearIcon />
+                    Settings
+                  </Button>
+                </div>
+              ) : ttsOk ? (
+                <div className="read-along-dock-hear-group">
+                  <Button
+                    size="lg"
+                    className="read-along-dock-btn"
+                    variant={narrating ? "secondary" : "ghost"}
+                    onClick={() => {
+                      if (narrating) {
+                        stopReadAloud();
+                        return;
+                      }
+                      startReadAloud();
+                    }}
+                    disabled={words.length === 0}
+                  >
+                    {narrating ? "Stop" : "Read to me"}
+                  </Button>
+                  <Button
+                    size="lg"
+                    className="read-along-dock-btn"
+                    variant="ghost"
+                    onClick={() => setTtsSettingsOpen(true)}
+                    title="Voice and speed"
+                  >
+                    <GearIcon />
+                    Settings
+                  </Button>
+                </div>
               ) : null}
               {storyFinished ? (
                 <Button
@@ -1107,6 +1255,14 @@ export function ReadAlongPlayer({
               disabled={!ttsOk || !vocabDef || vocabDef === DEFINITION_UNAVAILABLE}
             >
               Read To Me
+            </Button>
+            <Button
+              variant="secondary"
+              className="read-along-kid-btn"
+              onClick={() => setReportOpen(true)}
+              disabled={!vocabWord}
+            >
+              Report word
             </Button>
             <Button
               variant="ghost"
@@ -1248,6 +1404,98 @@ export function ReadAlongPlayer({
           />
         ) : null}
       </Modal>
+
+      <ReadAlongReportWordModal
+        open={reportOpen}
+        word={vocabWord}
+        studentId={session?.studentId}
+        sessionId={session?._id}
+        storyId={story?._id}
+        onClose={() => setReportOpen(false)}
+      />
+
+      <Modal
+        open={ttsSettingsOpen}
+        onClose={() => setTtsSettingsOpen(false)}
+        title="Reading voice"
+        description="Pick a voice and speed for Hear this word and Read to me."
+        size="md"
+        className="read-along-kid-modal"
+        footerClassName="justify-center"
+        footer={
+          <Button
+            className="read-along-kid-btn"
+            onClick={() => setTtsSettingsOpen(false)}
+          >
+            Save
+          </Button>
+        }
+      >
+        <div className="space-y-4">
+          <Select
+            label="Voice"
+            className="read-along-kid-input"
+            value={ttsSettings.voiceURI}
+            onChange={(e) => {
+              const next = saveReadAlongTtsSettings({
+                ...ttsSettings,
+                voiceURI: e.target.value,
+              });
+              setTtsSettings(next);
+            }}
+          >
+            <option value="">US English (default)</option>
+            {(listEnglishVoices(ttsVoices).length > 0
+              ? listEnglishVoices(ttsVoices)
+              : ttsVoices
+            ).map((voice) => (
+              <option key={voice.voiceURI} value={voice.voiceURI}>
+                {voice.name} ({voice.lang})
+              </option>
+            ))}
+          </Select>
+          <div className="flex flex-wrap gap-2">
+            {(["slow", "normal", "fast"] as const).map((preset) => (
+              <Button
+                key={preset}
+                className="read-along-kid-chip"
+                variant={
+                  Math.abs(ttsSettings.rate - ttsRateForPreset(preset)) < 0.03
+                    ? "primary"
+                    : "secondary"
+                }
+                onClick={() => {
+                  const next = saveReadAlongTtsSettings({
+                    ...ttsSettings,
+                    rate: ttsRateForPreset(preset),
+                  });
+                  setTtsSettings(next);
+                }}
+              >
+                {preset}
+              </Button>
+            ))}
+          </div>
+          <label className="block text-sm font-medium text-[var(--muted)]">
+            Speed {ttsSettings.rate.toFixed(2)}
+            <input
+              type="range"
+              min={0.7}
+              max={1.4}
+              step={0.05}
+              value={ttsSettings.rate}
+              className="mt-2 w-full accent-[var(--accent)]"
+              onChange={(e) => {
+                const next = saveReadAlongTtsSettings({
+                  ...ttsSettings,
+                  rate: clampTtsRate(Number(e.target.value)),
+                });
+                setTtsSettings(next);
+              }}
+            />
+          </label>
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -1265,6 +1513,14 @@ function PauseIcon() {
     <svg viewBox="0 0 16 16" width="22" height="22" aria-hidden fill="currentColor">
       <rect x="3.5" y="2.5" width="3.2" height="11" rx="0.9" />
       <rect x="9.3" y="2.5" width="3.2" height="11" rx="0.9" />
+    </svg>
+  );
+}
+
+function GearIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="22" height="22" aria-hidden fill="currentColor">
+      <path d="M8 10.2a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4Zm6.1-2.7-.9-.2a4.7 4.7 0 0 0-.4-1l.6-.7a.6.6 0 0 0 0-.8l-.9-.9a.6.6 0 0 0-.8 0l-.7.6a4.7 4.7 0 0 0-1-.4l-.2-.9A.6.6 0 0 0 9.2 1H6.8a.6.6 0 0 0-.6.5l-.2.9a4.7 4.7 0 0 0-1 .4l-.7-.6a.6.6 0 0 0-.8 0l-.9.9a.6.6 0 0 0 0 .8l.6.7a4.7 4.7 0 0 0-.4 1l-.9.2A.6.6 0 0 0 1 6.8v2.4a.6.6 0 0 0 .5.6l.9.2c.1.35.25.68.4 1l-.6.7a.6.6 0 0 0 0 .8l.9.9a.6.6 0 0 0 .8 0l.7-.6c.32.15.65.28 1 .4l.2.9a.6.6 0 0 0 .6.5h2.4a.6.6 0 0 0 .6-.5l.2-.9c.35-.12.68-.25 1-.4l.7.6a.6.6 0 0 0 .8 0l.9-.9a.6.6 0 0 0 0-.8l-.6-.7c.15-.32.28-.65.4-1l.9-.2a.6.6 0 0 0 .5-.6V6.8a.6.6 0 0 0-.5-.6Z" />
     </svg>
   );
 }

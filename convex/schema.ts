@@ -926,4 +926,62 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.optional(v.number()),
   }).index("by_word", ["word"]),
+
+  speechWordReports: defineTable({
+    word: v.string(),
+    normalizedWord: v.string(),
+    reportedByUserId: v.id("users"),
+    reporterRole: v.union(
+      v.literal("superAdmin"),
+      v.literal("family_main"),
+      v.literal("family_admin"),
+      v.literal("parent"),
+      v.literal("teacher"),
+      v.literal("tutor"),
+    ),
+    studentId: v.optional(v.id("students")),
+    sessionId: v.optional(v.id("readAlongSessions")),
+    storyId: v.optional(v.id("readAlongStories")),
+    familyId: v.optional(v.id("families")),
+    status: v.union(
+      v.literal("open"),
+      v.literal("testing"),
+      v.literal("approved"),
+      v.literal("rejected"),
+      v.literal("ticketed"),
+    ),
+    recognitionSamples: v.optional(
+      v.array(
+        v.object({
+          transcript: v.string(),
+          at: v.number(),
+        }),
+      ),
+    ),
+    notes: v.optional(v.string()),
+    ticketId: v.optional(v.id("speechDevTickets")),
+    createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
+  })
+    .index("by_status", ["status"])
+    .index("by_word", ["normalizedWord"])
+    .index("by_reporter", ["reportedByUserId"])
+    .index("by_student", ["studentId"]),
+
+  speechDevTickets: defineTable({
+    title: v.string(),
+    body: v.string(),
+    sourceReportId: v.optional(v.id("speechWordReports")),
+    status: v.union(
+      v.literal("open"),
+      v.literal("in_progress"),
+      v.literal("resolved"),
+    ),
+    createdByAdminId: v.id("users"),
+    createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
+  })
+    .index("by_status", ["status"])
+    .index("by_sourceReport", ["sourceReportId"])
+    .index("by_createdBy", ["createdByAdminId"]),
 });

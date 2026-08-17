@@ -130,6 +130,11 @@ export default function AdminKnowledgeBasePage() {
           Product updates
         </Button>
       </Link>
+      <Link href="/admin/speech-reports">
+        <Button variant="secondary" size="sm">
+          Speech reports
+        </Button>
+      </Link>
       <Link href="/help">
         <Button variant="ghost" size="sm">
           Public help

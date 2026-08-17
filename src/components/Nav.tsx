@@ -72,6 +72,7 @@ const navByRole: Record<string, NavEntry[]> = {
           { href: "/admin/accounts", label: "Accounts" },
           { href: "/admin/product-updates", label: "Manage updates" },
           { href: "/admin/knowledge-base", label: "Manage KB" },
+          { href: "/admin/speech-reports", label: "Speech reports" },
         ],
       },
     },
