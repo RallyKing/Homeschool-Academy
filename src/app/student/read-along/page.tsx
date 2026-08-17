@@ -17,6 +17,7 @@ import {
   Section,
   Select,
 } from "@/components/ui";
+import { retainRecipeSelection } from "@/lib/readAlongRecipeSelection";
 
 function StudentReadAlongInner() {
   const viewAsStudentId = useViewAsStudentId();
@@ -69,6 +70,7 @@ function StudentReadAlongInner() {
     () => sessions?.find((s) => s.session.status === "in_progress" || s.session.status === "practice"),
     [sessions],
   );
+  const selectedRecipeId = retainRecipeSelection(recipeId, recipes);
 
   function notify(text: string, next: "info" | "error" | "success" = "success") {
     setMessage(text);
@@ -78,7 +80,7 @@ function StudentReadAlongInner() {
   async function onGenerate(e: FormEvent) {
     e.preventDefault();
     if (!profile) return;
-    if (!recipeId) {
+    if (!selectedRecipeId) {
       notify("Pick a story recipe first.", "error");
       return;
     }
@@ -86,10 +88,10 @@ function StudentReadAlongInner() {
     try {
       const result = await generateStory({
         studentId: profile._id,
-        recipeId: recipeId as Id<"readAlongRecipes">,
+        recipeId: selectedRecipeId as Id<"readAlongRecipes">,
         parentGuardrailContext: family?.parentGuardrailContext,
       });
-      notify(`New story: “${result.title}”`);
+      notify(`New story: “${result.title}” from ${result.recipeTitle}`);
     } catch (err) {
       notify(err instanceof Error ? err.message : "Could not generate", "error");
     } finally {
@@ -218,7 +220,7 @@ function StudentReadAlongInner() {
           <form onSubmit={(e) => void onGenerate(e)} className="space-y-4 max-w-xl">
             <Select
               label="Story recipe"
-              value={recipeId}
+              value={selectedRecipeId}
               onChange={(e) => setRecipeId(e.target.value)}
               required
             >
@@ -229,7 +231,7 @@ function StudentReadAlongInner() {
                 </option>
               ))}
             </Select>
-            <Button type="submit" disabled={busy || !recipeId}>
+            <Button type="submit" disabled={busy || !selectedRecipeId}>
               {busy ? "Writing…" : "Generate"}
             </Button>
           </form>

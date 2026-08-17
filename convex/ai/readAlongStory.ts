@@ -167,6 +167,7 @@ export const generate = action({
       ageBand: context.ageBand,
       academicLevel: context.academicLevel,
       subject: recipe.theme,
+      recipeTitle: recipe.title,
     });
     let title = mock.title;
     let body = mock.body;
