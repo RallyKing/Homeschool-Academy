@@ -14,6 +14,8 @@ export type ModalProps = {
   footer?: React.ReactNode;
   size?: "sm" | "md" | "lg";
   className?: string;
+  bodyClassName?: string;
+  footerClassName?: string;
 };
 
 const sizes = {
@@ -34,6 +36,8 @@ export function Modal({
   footer,
   size = "md",
   className,
+  bodyClassName,
+  footerClassName,
 }: ModalProps) {
   const titleId = useId();
   const descId = useId();
@@ -113,7 +117,7 @@ export function Modal({
         aria-labelledby={titleId}
         aria-describedby={description ? descId : undefined}
         className={cn(
-          "relative z-10 w-full rounded-[var(--radius-xl)] border border-[var(--border)]",
+          "relative z-10 w-full min-w-0 rounded-[var(--radius-xl)] border border-[var(--border)]",
           "bg-[var(--surface)] p-6 shadow-[var(--shadow-lg)] animate-modal-in",
           "backdrop-blur-xl",
           sizes[size],
@@ -143,9 +147,16 @@ export function Modal({
             </svg>
           </Button>
         </div>
-        <div className="space-y-4">{children}</div>
+        <div className={cn("min-h-0 space-y-4 overflow-x-hidden overflow-y-auto", bodyClassName)}>
+          {children}
+        </div>
         {footer ? (
-          <div className="mt-6 flex flex-wrap justify-end gap-2 border-t border-[var(--border)] pt-4">
+          <div
+            className={cn(
+              "mt-6 flex flex-wrap gap-2 border-t border-[var(--border)] pt-4",
+              footerClassName ?? "justify-end",
+            )}
+          >
             {footer}
           </div>
         ) : null}

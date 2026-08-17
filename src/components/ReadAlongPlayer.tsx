@@ -14,12 +14,14 @@ import {
 } from "@/components/ui";
 import { localIsoDate, localWeekStart } from "@/lib/dates";
 import {
+  farthestMatchedIndex,
   getSpeechRecognitionCtor,
   isSkippableToken,
+  LOOKAHEAD_WORDS,
   speakText,
   speechRecognitionSupported,
+  splitHighlightWords,
   stopSpeaking,
-  transcriptMatchesWord,
   ttsSupported,
 } from "@/lib/readAlongSpeech";
 
@@ -30,6 +32,8 @@ type WordEvent = {
 };
 
 const FLUSH_EVERY = 8;
+const FLUSH_MS = 300;
+const MISS_GRACE_MS = 2500;
 
 export function ReadAlongPlayer({
   sessionId,
@@ -86,6 +90,11 @@ export function ReadAlongPlayer({
   const vocabCache = useRef<Map<string, { definition: string; example: string }>>(
     new Map(),
   );
+  const currentWordElRef = useRef<HTMLButtonElement | null>(null);
+  const graceTimerRef = useRef<number | null>(null);
+  const flushTimerRef = useRef<number | null>(null);
+  const wordsRef = useRef<string[]>([]);
+  const processHeardRef = useRef<(transcript: string) => void>(() => {});
 
   const micOk = speechRecognitionSupported();
   const ttsOk = ttsSupported();
@@ -104,13 +113,18 @@ export function ReadAlongPlayer({
     [session?.practicedWords],
   );
 
-  const skipSkippable = useCallback((from: number) => {
-    let i = from;
-    while (i < words.length && isSkippableToken(words[i]!)) {
-      i += 1;
-    }
-    return i;
-  }, [words]);
+  wordsRef.current = words;
+
+  const skipSkippable = useCallback(
+    (from: number) => {
+      let i = from;
+      while (i < words.length && isSkippableToken(words[i]!)) {
+        i += 1;
+      }
+      return i;
+    },
+    [words],
+  );
 
   const effectiveIndex = skipSkippable(index);
 
@@ -135,11 +149,13 @@ export function ReadAlongPlayer({
   }, [session]);
 
   useEffect(() => {
-    return () => {
-      recognitionRef.current?.abort();
-      stopSpeaking();
-    };
-  }, []);
+    if (vocabOpen) return;
+    currentWordElRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+      inline: "nearest",
+    });
+  }, [effectiveIndex, vocabOpen]);
 
   const notify = useCallback(
     (text: string, tone: "info" | "error" | "success" = "info") => {
@@ -149,13 +165,21 @@ export function ReadAlongPlayer({
     [],
   );
 
+  const clearGrace = useCallback(() => {
+    if (graceTimerRef.current != null) {
+      window.clearTimeout(graceTimerRef.current);
+      graceTimerRef.current = null;
+    }
+  }, []);
+
   const flush = useCallback(
     async (currentWordIndex: number, extraHelp: string[] = []) => {
-      const events = pendingRef.current;
-      if (events.length === 0 && extraHelp.length === 0) {
+      const queued = pendingRef.current;
+      if (queued.length === 0 && extraHelp.length === 0) {
         return { pointsGained: 0, needsHelpWords: helpWords };
       }
-      pendingRef.current = [];
+      const events = queued.slice(0, 40);
+      pendingRef.current = queued.slice(40);
       const result = await recordWordResults({
         sessionId,
         events,
@@ -170,20 +194,70 @@ export function ReadAlongPlayer({
     [helpWords, recordWordResults, sessionId, today, weekStart],
   );
 
-  const queueEvent = useCallback(
-    (event: WordEvent, nextIndex: number, extraHelp: string[] = []) => {
-      pendingRef.current = [...pendingRef.current, event];
-      if (pendingRef.current.length >= FLUSH_EVERY) {
-        void flush(nextIndex, extraHelp).catch((err) =>
-          notify(err instanceof Error ? err.message : "Could not save progress", "error"),
+  const scheduleFlush = useCallback(
+    (currentWordIndex: number, extraHelp: string[] = []) => {
+      const run = (wordIndex: number, help: string[]) => {
+        if (flushTimerRef.current != null) {
+          window.clearTimeout(flushTimerRef.current);
+          flushTimerRef.current = null;
+        }
+        void flush(wordIndex, help).catch((err) =>
+          notify(
+            err instanceof Error ? err.message : "Could not save progress",
+            "error",
+          ),
         );
-      } else if (extraHelp.length > 0) {
-        void flush(nextIndex, extraHelp).catch((err) =>
-          notify(err instanceof Error ? err.message : "Could not save progress", "error"),
-        );
+      };
+
+      if (extraHelp.length > 0 || pendingRef.current.length >= FLUSH_EVERY) {
+        run(currentWordIndex, extraHelp);
+        return;
       }
+      if (flushTimerRef.current != null) {
+        window.clearTimeout(flushTimerRef.current);
+      }
+      flushTimerRef.current = window.setTimeout(() => {
+        flushTimerRef.current = null;
+        run(indexRef.current, []);
+      }, FLUSH_MS);
     },
     [flush, notify],
+  );
+
+  const advanceThrough = useCallback(
+    (
+      throughIndex: number,
+      lastResult: WordEvent["result"],
+      helpedWord?: string,
+    ) => {
+      const start = indexRef.current;
+      if (throughIndex < start) return;
+      const events: WordEvent[] = [];
+      for (let i = start; i <= throughIndex; i++) {
+        const word = words[i];
+        if (!word || isSkippableToken(word)) continue;
+        events.push({
+          wordIndex: i,
+          word,
+          result: i === throughIndex ? lastResult : "correct",
+        });
+      }
+      const next = skipSkippable(throughIndex + 1);
+      indexRef.current = next;
+      setIndex(next);
+      missesRef.current = 0;
+      setMisses(0);
+      setHeard("");
+      clearGrace();
+      if (next >= words.length) {
+        listeningRef.current = false;
+        recognitionRef.current?.stop();
+        setListening(false);
+      }
+      pendingRef.current = [...pendingRef.current, ...events];
+      scheduleFlush(next, helpedWord ? [helpedWord] : []);
+    },
+    [clearGrace, scheduleFlush, skipSkippable, words],
   );
 
   const advance = useCallback(
@@ -191,22 +265,9 @@ export function ReadAlongPlayer({
       const i = indexRef.current;
       const word = words[i];
       if (!word) return;
-      const next = skipSkippable(i + 1);
-      setIndex(next);
-      setMisses(0);
-      setHeard("");
-      if (next >= words.length) {
-        listeningRef.current = false;
-        recognitionRef.current?.stop();
-        setListening(false);
-      }
-      queueEvent(
-        { wordIndex: i, word, result },
-        next,
-        helpedWord ? [helpedWord] : [],
-      );
+      advanceThrough(i, result, helpedWord);
     },
-    [queueEvent, skipSkippable, words],
+    [advanceThrough, words],
   );
 
   const handleMiss = useCallback(() => {
@@ -215,6 +276,7 @@ export function ReadAlongPlayer({
     if (!word || isSkippableToken(word)) return;
     const nextMiss = missesRef.current + 1;
     if (nextMiss < 2) {
+      missesRef.current = nextMiss;
       setMisses(nextMiss);
       notify(`Try "${normalizeDisplay(word)}" again.`, "info");
       return;
@@ -228,6 +290,31 @@ export function ReadAlongPlayer({
     const result = missesRef.current > 0 ? "retry_ok" : "correct";
     advance(result);
   }, [advance]);
+
+  processHeardRef.current = (transcript: string) => {
+    const expectedWords = wordsRef.current;
+    const i = indexRef.current;
+    if (i >= expectedWords.length) return;
+    const lookAhead = missesRef.current === 0 ? LOOKAHEAD_WORDS : 0;
+    const matched = farthestMatchedIndex(
+      transcript,
+      expectedWords,
+      i,
+      lookAhead,
+    );
+    if (matched >= i) {
+      const result = missesRef.current > 0 ? "retry_ok" : "correct";
+      advanceThrough(matched, result);
+      return;
+    }
+    if (transcript.trim().length === 0) return;
+    if (graceTimerRef.current != null) return;
+    graceTimerRef.current = window.setTimeout(() => {
+      graceTimerRef.current = null;
+      if (!listeningRef.current) return;
+      handleMiss();
+    }, MISS_GRACE_MS);
+  };
 
   const startListening = useCallback(() => {
     const Ctor = getSpeechRecognitionCtor();
@@ -244,25 +331,17 @@ export function ReadAlongPlayer({
     rec.interimResults = true;
     rec.maxAlternatives = 3;
     rec.onresult = (event) => {
-      let latest = "";
-      let finalText = "";
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const row = event.results[i];
+      let combined = "";
+      let interim = "";
+      for (let r = 0; r < event.results.length; r++) {
+        const row = event.results[r];
         const t = row?.[0]?.transcript ?? "";
-        latest = t;
-        if (row.isFinal) finalText = t;
+        if (row.isFinal) combined += `${t} `;
+        else interim = t;
       }
-      setHeard(latest.trim());
-      const expected = words[indexRef.current];
-      if (!expected) return;
-      if (transcriptMatchesWord(latest, expected)) {
-        handleMatch();
-        return;
-      }
-      if (finalText && !transcriptMatchesWord(finalText, expected)) {
-        const said = finalText.trim();
-        if (said.length > 0) handleMiss();
-      }
+      const latest = `${combined}${interim}`.trim();
+      setHeard(latest);
+      processHeardRef.current(latest);
     };
     rec.onerror = (ev) => {
       if (ev.error === "not-allowed") {
@@ -292,13 +371,27 @@ export function ReadAlongPlayer({
     } catch {
       setListenError("Could not start the microphone. Try again, or tap Next.");
     }
-  }, [handleMatch, handleMiss, words]);
+  }, []);
 
   const stopListening = useCallback(() => {
     listeningRef.current = false;
     setListening(false);
+    clearGrace();
     recognitionRef.current?.stop();
     recognitionRef.current = null;
+  }, [clearGrace]);
+
+  useEffect(() => {
+    return () => {
+      recognitionRef.current?.abort();
+      stopSpeaking();
+      if (graceTimerRef.current != null) {
+        window.clearTimeout(graceTimerRef.current);
+      }
+      if (flushTimerRef.current != null) {
+        window.clearTimeout(flushTimerRef.current);
+      }
+    };
   }, []);
 
   async function openVocab(word: string) {
@@ -334,10 +427,13 @@ export function ReadAlongPlayer({
     }
   }
 
+  const vocabSpokenText = [vocabDef, vocabExample].filter(Boolean).join(" ");
+  const vocabDefWords = splitHighlightWords(vocabDef);
+  const vocabExampleWords = splitHighlightWords(vocabExample);
+
   function speakVocab() {
-    const text = [vocabDef, vocabExample].filter(Boolean).join(" ");
     setVocabHighlight(0);
-    speakText(text, {
+    speakText(vocabSpokenText, {
       rate: 0.85,
       onBoundaryWord: (i) => setVocabHighlight(i),
       onEnd: () => setVocabHighlight(-1),
@@ -361,6 +457,10 @@ export function ReadAlongPlayer({
     setFinishing(true);
     stopListening();
     try {
+      if (flushTimerRef.current != null) {
+        window.clearTimeout(flushTimerRef.current);
+        flushTimerRef.current = null;
+      }
       await flush(Math.min(indexRef.current, words.length));
       const endedAt = Date.now();
       const durationMs = Math.max(0, endedAt - session.startedAt);
@@ -457,8 +557,10 @@ export function ReadAlongPlayer({
     );
   }
 
+  const storyFinished = !inPractice && effectiveIndex >= words.length;
+
   return (
-    <div className="space-y-5">
+    <div className="read-along-session space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs font-medium uppercase tracking-wide text-[var(--muted)]">
@@ -490,8 +592,9 @@ export function ReadAlongPlayer({
         </Message>
       ) : (
         <p className="text-sm text-[var(--muted)]">
-          We’ll listen only while you read, to check the current word. Chrome
-          and Edge use the browser’s speech service — we don’t store the audio.
+          We’ll keep listening while you read and follow along — even if you
+          read ahead. Chrome and Edge use the browser’s speech service; we don’t
+          store the audio.
         </p>
       )}
 
@@ -501,28 +604,14 @@ export function ReadAlongPlayer({
           description="Say or tap each word, then finish the session."
         >
           {remainingPractice.length === 0 ? (
-            <Button onClick={() => void completeSession()} disabled={finishing}>
-              {finishing ? "Saving…" : "Finish & log time"}
-            </Button>
+            <p className="text-sm text-[var(--muted)]">
+              Practice is done. Finish to log your time.
+            </p>
           ) : (
             <div className="space-y-4">
               <p className="font-display text-4xl font-semibold tracking-tight text-[var(--accent)]">
                 {practiceWord}
               </p>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  onClick={() => practiceWord && speakText(practiceWord)}
-                  variant="secondary"
-                  disabled={!ttsOk}
-                >
-                  Hear it
-                </Button>
-                <Button
-                  onClick={() => practiceWord && void onPracticeOk(practiceWord)}
-                >
-                  I read it
-                </Button>
-              </div>
               <p className="text-xs text-[var(--muted)]">
                 {remainingPractice.length} left
               </p>
@@ -544,6 +633,7 @@ export function ReadAlongPlayer({
                   <button
                     key={`${word}-${i}`}
                     type="button"
+                    ref={currentWord ? currentWordElRef : undefined}
                     className={
                       currentWord
                         ? "read-along-word read-along-word-current"
@@ -569,55 +659,105 @@ export function ReadAlongPlayer({
               plays the word so you can continue.
             </Message>
           ) : null}
-
-          {heard ? (
-            <p className="text-xs text-[var(--muted)]">Heard: {heard}</p>
-          ) : null}
-
-          <div className="flex flex-wrap gap-2">
-            {micOk ? (
-              <Button
-                onClick={() => (listening ? stopListening() : startListening())}
-                variant={listening ? "secondary" : "primary"}
-              >
-                {listening ? "Stop mic" : "Start mic"}
-              </Button>
-            ) : null}
-            <Button
-              variant="secondary"
-              onClick={() => {
-                if (!current) return;
-                handleMatch();
-              }}
-              disabled={!current}
-            >
-              Next / I read it
-            </Button>
-            {current && ttsOk ? (
-              <Button
-                variant="ghost"
-                onClick={() => speakText(normalizeDisplay(current))}
-              >
-                Hear this word
-              </Button>
-            ) : null}
-            {effectiveIndex >= words.length ? (
-              <Button onClick={() => void goToPracticeOrFinish()}>
-                Continue
-              </Button>
-            ) : null}
-          </div>
         </>
       )}
+
+      <nav className="read-along-dock" aria-label="Read-along controls">
+        <div className="read-along-dock-inner">
+          {inPractice ? (
+            remainingPractice.length === 0 ? (
+              <Button
+                size="lg"
+                className="read-along-dock-btn"
+                onClick={() => void completeSession()}
+                disabled={finishing}
+              >
+                {finishing ? "Saving…" : "Finish & log time"}
+              </Button>
+            ) : (
+              <>
+                <Button
+                  size="lg"
+                  className="read-along-dock-btn"
+                  onClick={() => practiceWord && speakText(practiceWord)}
+                  variant="secondary"
+                  disabled={!ttsOk}
+                >
+                  Hear it
+                </Button>
+                <Button
+                  size="lg"
+                  className="read-along-dock-btn"
+                  onClick={() => practiceWord && void onPracticeOk(practiceWord)}
+                >
+                  I read it
+                </Button>
+              </>
+            )
+          ) : (
+            <>
+              {micOk ? (
+                <Button
+                  size="lg"
+                  className="read-along-dock-btn"
+                  onClick={() => (listening ? stopListening() : startListening())}
+                  variant={listening ? "secondary" : "primary"}
+                >
+                  {listening ? "Stop mic" : "Start mic"}
+                </Button>
+              ) : null}
+              <Button
+                size="lg"
+                className="read-along-dock-btn"
+                variant="secondary"
+                onClick={() => {
+                  if (!current) return;
+                  handleMatch();
+                }}
+                disabled={!current}
+              >
+                Next / I read it
+              </Button>
+              {current && ttsOk ? (
+                <Button
+                  size="lg"
+                  className="read-along-dock-btn"
+                  variant="ghost"
+                  onClick={() => speakText(normalizeDisplay(current))}
+                >
+                  Hear this word
+                </Button>
+              ) : null}
+              {storyFinished ? (
+                <Button
+                  size="lg"
+                  className="read-along-dock-btn"
+                  onClick={() => void goToPracticeOrFinish()}
+                >
+                  Continue
+                </Button>
+              ) : null}
+            </>
+          )}
+          {heard && !inPractice ? (
+            <p className="read-along-dock-heard">Heard: {heard}</p>
+          ) : null}
+        </div>
+      </nav>
 
       <Modal
         open={vocabOpen}
         onClose={() => {
           stopSpeaking();
           setVocabOpen(false);
+          setVocabHighlight(-1);
         }}
         title={vocabWord || "Word"}
         description="Age-fit meaning. Hear it with highlighting."
+        size="md"
+        className="flex max-h-[min(90dvh,42rem)] min-w-0 flex-col overflow-hidden"
+        bodyClassName="max-h-[min(52vh,24rem)]"
+        footerClassName="justify-center"
         footer={
           <>
             <Button
@@ -625,10 +765,17 @@ export function ReadAlongPlayer({
               onClick={speakVocab}
               disabled={!ttsOk || !vocabDef}
             >
-              Hear definition
+              Read To Me
             </Button>
-            <Button variant="ghost" onClick={() => setVocabOpen(false)}>
-              Close
+            <Button
+              variant="ghost"
+              onClick={() => {
+                stopSpeaking();
+                setVocabOpen(false);
+                setVocabHighlight(-1);
+              }}
+            >
+              Back to Story
             </Button>
           </>
         }
@@ -636,11 +783,11 @@ export function ReadAlongPlayer({
         {vocabBusy ? (
           <p className="text-sm text-[var(--muted)]">Looking up…</p>
         ) : (
-          <div className="space-y-3">
-            <p className="text-base leading-relaxed">
-              {vocabDef.split(/\s+/).map((w, i) => (
+          <div className="read-along-vocab min-w-0 space-y-3">
+            <p className="read-along-vocab-text text-base leading-relaxed">
+              {vocabDefWords.map((w, i) => (
                 <span
-                  key={`${w}-${i}`}
+                  key={`def-${w}-${i}`}
                   className={
                     i === vocabHighlight
                       ? "read-along-word read-along-word-current"
@@ -652,7 +799,23 @@ export function ReadAlongPlayer({
               ))}
             </p>
             {vocabExample ? (
-              <p className="text-sm text-[var(--muted)]">{vocabExample}</p>
+              <p className="read-along-vocab-text text-sm text-[var(--muted)]">
+                {vocabExampleWords.map((w, i) => {
+                  const idx = vocabDefWords.length + i;
+                  return (
+                    <span
+                      key={`ex-${w}-${i}`}
+                      className={
+                        idx === vocabHighlight
+                          ? "read-along-word read-along-word-current"
+                          : "read-along-word"
+                      }
+                    >
+                      {w}
+                    </span>
+                  );
+                })}
+              </p>
             ) : null}
           </div>
         )}

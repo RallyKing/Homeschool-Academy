@@ -821,3 +821,60 @@ html {
   background: color-mix(in srgb, var(--warning, #b45309) 22%, transparent);
 }
 
+.read-along-session {
+  padding-bottom: calc(7.75rem + env(safe-area-inset-bottom, 0px));
+}
+
+.read-along-dock {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 30;
+  padding: 0.7rem 1rem calc(0.7rem + env(safe-area-inset-bottom, 0px));
+  background: var(--glass);
+  backdrop-filter: saturate(180%) blur(16px);
+  -webkit-backdrop-filter: saturate(180%) blur(16px);
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -10px 32px rgba(12, 18, 34, 0.08);
+}
+
+.read-along-dock-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  max-width: 64rem;
+  margin: 0 auto;
+}
+
+.read-along-dock-btn {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.read-along-dock-heard {
+  flex: 1 1 100%;
+  margin: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.75rem;
+  color: var(--muted);
+  text-align: center;
+}
+
+.read-along-vocab,
+.read-along-vocab-text {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.read-along-vocab-text .read-along-word {
+  max-width: 100%;
+}
+

@@ -1,3 +1,5 @@
+export const LOOKAHEAD_WORDS = 8;
+
 export function normalizeWord(raw: string): string {
   return raw
     .toLowerCase()
@@ -5,8 +7,24 @@ export function normalizeWord(raw: string): string {
     .replace(/[^a-z0-9']/g, "");
 }
 
+export function foldWord(raw: string): string {
+  return normalizeWord(raw).replace(/'/g, "");
+}
+
 export function isSkippableToken(word: string): boolean {
   return normalizeWord(word).length === 0;
+}
+
+export function splitHighlightWords(text: string): string[] {
+  return text.split(/\s+/).filter(Boolean);
+}
+
+export function wordIndexAtChar(text: string, charIndex: number): number {
+  const i = Math.max(0, Math.min(charIndex, text.length));
+  const prefix = text.slice(0, i);
+  const completed = prefix.split(/\s+/).filter(Boolean).length;
+  const atWordStart = i === 0 || /\s/.test(text[i - 1] ?? "");
+  return atWordStart ? completed : Math.max(0, completed - 1);
 }
 
 function levenshtein(a: string, b: string): number {
@@ -27,25 +45,112 @@ function levenshtein(a: string, b: string): number {
   return row[b.length]!;
 }
 
+const HOMOPHONE_GROUPS: string[][] = [
+  ["there", "their", "theyre"],
+  ["to", "too", "two"],
+  ["your", "youre"],
+  ["here", "hear"],
+  ["know", "no"],
+  ["one", "won"],
+  ["see", "sea"],
+  ["for", "four", "fore"],
+  ["be", "bee"],
+  ["by", "bye", "buy"],
+  ["i", "eye"],
+  ["sun", "son"],
+  ["right", "write"],
+  ["new", "knew"],
+  ["hole", "whole"],
+  ["peace", "piece"],
+  ["wait", "weight"],
+  ["where", "wear"],
+  ["which", "witch"],
+  ["wood", "would"],
+  ["meet", "meat"],
+  ["read", "red"],
+  ["ate", "eight"],
+];
+
+const HOMOPHONE_CANON = new Map<string, string>();
+for (const group of HOMOPHONE_GROUPS) {
+  const canon = group[0]!;
+  for (const word of group) {
+    HOMOPHONE_CANON.set(word, canon);
+  }
+}
+
+function matchKey(raw: string): string {
+  const folded = foldWord(raw);
+  return HOMOPHONE_CANON.get(folded) ?? folded;
+}
+
 export function wordsMatch(expected: string, heard: string): boolean {
-  const e = normalizeWord(expected);
-  const h = normalizeWord(heard);
+  const e = matchKey(expected);
+  const h = matchKey(heard);
   if (!e) return true;
   if (!h) return false;
   if (h === e) return true;
-  if (h.includes(e) || e.includes(h)) return true;
+  if (e.length >= 4 && h.length >= 4 && (h.includes(e) || e.includes(h))) {
+    return true;
+  }
   const dist = levenshtein(e, h);
-  const max = e.length <= 4 ? 1 : e.length <= 8 ? 2 : 3;
+  const max = e.length <= 5 ? 1 : 2;
   return dist <= max;
 }
 
-export function transcriptMatchesWord(transcript: string, expected: string): boolean {
-  const tokens = transcript
+export function tokenizeTranscript(transcript: string): string[] {
+  return transcript
     .split(/\s+/)
     .map((t) => t.trim())
     .filter(Boolean);
-  const last = tokens.slice(-4);
+}
+
+export function transcriptMatchesWord(
+  transcript: string,
+  expected: string,
+): boolean {
+  const last = tokenizeTranscript(transcript).slice(-8);
   return last.some((t) => wordsMatch(expected, t));
+}
+
+/**
+ * Walk the transcript against expected words from `startIndex`.
+ * Matching a later word in the look-ahead window counts as keeping up
+ * (skipped-over words are treated as read).
+ * Returns the farthest matched word index, or -1 if none matched.
+ */
+export function farthestMatchedIndex(
+  transcript: string,
+  words: string[],
+  startIndex: number,
+  lookAhead = LOOKAHEAD_WORDS,
+): number {
+  const tokens = tokenizeTranscript(transcript).slice(-24);
+  if (tokens.length === 0 || startIndex >= words.length) return -1;
+
+  const end = Math.min(words.length, startIndex + Math.max(0, lookAhead) + 1);
+  let expectedFrom = startIndex;
+  let lastMatched = -1;
+  let matchedCurrent = false;
+
+  for (const token of tokens) {
+    for (let i = expectedFrom; i < end; i++) {
+      const word = words[i];
+      if (!word || isSkippableToken(word)) continue;
+      if (!wordsMatch(word, token)) continue;
+      lastMatched = i;
+      expectedFrom = i + 1;
+      if (i === startIndex) matchedCurrent = true;
+      break;
+    }
+  }
+
+  if (lastMatched < startIndex) return -1;
+  if (!matchedCurrent && lastMatched > startIndex) {
+    const anchor = foldWord(words[lastMatched] ?? "");
+    if (anchor.length < 4) return -1;
+  }
+  return lastMatched;
 }
 
 export function displayWord(word: string): string {
@@ -92,6 +197,21 @@ export function ttsSupported(): boolean {
   return typeof window !== "undefined" && "speechSynthesis" in window;
 }
 
+let speakGeneration = 0;
+let highlightTimer: number | null = null;
+let highlightInterval: number | null = null;
+
+function clearHighlightTimers() {
+  if (highlightTimer != null) {
+    window.clearTimeout(highlightTimer);
+    highlightTimer = null;
+  }
+  if (highlightInterval != null) {
+    window.clearInterval(highlightInterval);
+    highlightInterval = null;
+  }
+}
+
 export function speakText(
   text: string,
   opts?: {
@@ -104,24 +224,64 @@ export function speakText(
     opts?.onEnd?.();
     return;
   }
+
+  const gen = ++speakGeneration;
+  clearHighlightTimers();
   window.speechSynthesis.cancel();
+
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.rate = opts?.rate ?? 0.9;
   utterance.lang = "en-US";
+
+  const onDone = () => {
+    if (gen !== speakGeneration) return;
+    clearHighlightTimers();
+    opts?.onEnd?.();
+  };
+
   if (opts?.onBoundaryWord) {
+    let boundaryFired = false;
+    const words = splitHighlightWords(text);
     utterance.onboundary = (event: SpeechSynthesisEvent) => {
-      if (event.name !== "word") return;
-      const prefix = text.slice(0, event.charIndex);
-      const idx = prefix.trim() ? prefix.trim().split(/\s+/).length : 0;
-      opts.onBoundaryWord?.(idx);
+      if (gen !== speakGeneration) return;
+      if (event.name && event.name !== "word") return;
+      boundaryFired = true;
+      clearHighlightTimers();
+      const idx = Math.min(
+        words.length - 1,
+        wordIndexAtChar(text, event.charIndex),
+      );
+      if (idx >= 0) opts.onBoundaryWord?.(idx);
     };
+
+    const msPerWord = Math.max(220, Math.round(1000 / (2.6 * utterance.rate)));
+    highlightTimer = window.setTimeout(() => {
+      if (gen !== speakGeneration || boundaryFired || words.length === 0) return;
+      let i = 0;
+      opts.onBoundaryWord?.(0);
+      highlightInterval = window.setInterval(() => {
+        if (gen !== speakGeneration) {
+          clearHighlightTimers();
+          return;
+        }
+        i += 1;
+        if (i >= words.length) {
+          clearHighlightTimers();
+          return;
+        }
+        opts.onBoundaryWord?.(i);
+      }, msPerWord);
+    }, 280);
   }
-  utterance.onend = () => opts?.onEnd?.();
-  utterance.onerror = () => opts?.onEnd?.();
+
+  utterance.onend = onDone;
+  utterance.onerror = onDone;
   window.speechSynthesis.speak(utterance);
 }
 
 export function stopSpeaking(): void {
+  speakGeneration += 1;
+  clearHighlightTimers();
   if (typeof window !== "undefined" && "speechSynthesis" in window) {
     window.speechSynthesis.cancel();
   }
