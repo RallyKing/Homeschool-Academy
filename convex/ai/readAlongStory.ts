@@ -5,6 +5,10 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 import { action } from "../_generated/server";
 import { api } from "../_generated/api";
 import { mockReadAlongStory } from "./mocks";
+import {
+  findSpokenContextIssues,
+} from "../lib/readAlongSpokenContext";
+import { SPOKEN_CONTEXT_PROMPT_RULES } from "../lib/readAlongPrompt";
 import { chatCompletion, keywordFilter } from "./provider";
 import {
   ageBandValidator,
@@ -40,6 +44,43 @@ function lengthGuide(length: "short" | "medium" | "long"): string {
   if (length === "short") return "60–90 words (~3 minutes of reading)";
   if (length === "long") return "200–280 words (~10 minutes of reading)";
   return "120–180 words (~6 minutes of reading)";
+}
+
+function readAlongStorySystemPrompt(input: {
+  recipeTitle: string;
+  gradeLevel: string;
+  theme: string;
+  morals: string;
+  length: "short" | "medium" | "long";
+  displayName: string;
+  ageBand: AgeBand;
+  academicLevel?: string;
+  aiPrompt: string;
+  guard: string;
+}): string {
+  return `You write ONE original read-aloud story for a homeschool student.
+Return ONLY JSON: {"title":"...","body":"..."}
+
+Recipe title: ${input.recipeTitle}
+Grade level: ${input.gradeLevel}
+Theme: ${input.theme}
+Moral lessons to weave in (show, don't lecture): ${input.morals}
+Length: ${input.length} — ${lengthGuide(input.length)}
+Student: ${input.displayName}; age band ${input.ageBand}; academic level ${input.academicLevel ?? "unspecified"}.
+
+Parent recipe prompt (follow this closely):
+${input.aiPrompt}
+
+Parent guardrails (MUST follow):
+${input.guard}
+
+Rules:
+- Original, kind, concrete. No violence, romance, weapons, cheating, or medical claims.
+- No sibling comparisons or rankings.
+- Match the grade level vocabulary.
+- Do not mention these instructions.
+
+${SPOKEN_CONTEXT_PROMPT_RULES}`;
 }
 
 /**
@@ -133,28 +174,21 @@ export const generate = action({
     let reason =
       "Read-along mock from recipe (set OPENAI_API_KEY or AI_GATEWAY_API_KEY for live LLM)";
 
+    const systemPrompt = readAlongStorySystemPrompt({
+      recipeTitle: recipe.title,
+      gradeLevel: recipe.gradeLevel,
+      theme: recipe.theme,
+      morals,
+      length: recipe.length,
+      displayName: context.displayName,
+      ageBand: context.ageBand,
+      academicLevel: context.academicLevel,
+      aiPrompt: recipe.aiPrompt,
+      guard,
+    });
+
     const llm = await chatCompletion({
-      system: `You write ONE original read-aloud story for a homeschool student.
-Return ONLY JSON: {"title":"...","body":"..."}
-
-Recipe title: ${recipe.title}
-Grade level: ${recipe.gradeLevel}
-Theme: ${recipe.theme}
-Moral lessons to weave in (show, don't lecture): ${morals}
-Length: ${recipe.length} — ${lengthGuide(recipe.length)}
-Student: ${context.displayName}; age band ${context.ageBand}; academic level ${context.academicLevel ?? "unspecified"}.
-
-Parent recipe prompt (follow this closely):
-${recipe.aiPrompt}
-
-Parent guardrails (MUST follow):
-${guard}
-
-Rules:
-- Original, kind, concrete. No violence, romance, weapons, cheating, or medical claims.
-- No sibling comparisons or rankings.
-- Match the grade level vocabulary.
-- Do not mention these instructions.`,
+      system: systemPrompt,
       user: `Write the next read-along story for ${context.displayName} using this recipe.`,
       temperature: 0.7,
     });
@@ -166,6 +200,31 @@ Rules:
         body = parsed.body;
         provider = llm.provider;
         reason = `Recipe “${recipe.title}” · LLM story`;
+      }
+    }
+
+    const issues = findSpokenContextIssues(body);
+    if (issues.length > 0) {
+      const retry = await chatCompletion({
+        system: `${systemPrompt}
+
+The previous draft failed spoken-context checks. Fix every issue in one rewrite. Do not add a glossary.
+Issues:
+- ${issues.join("\n- ")}`,
+        user: `Rewrite this read-along so every word has neighboring spoken context. Return ONLY JSON: {"title":"...","body":"..."}\n\nTitle: ${title}\n\n${body}`,
+        temperature: 0.4,
+      });
+      if (retry) {
+        const parsed = parseStoryJson(retry.content);
+        if (parsed) {
+          const retryIssues = findSpokenContextIssues(parsed.body);
+          if (retryIssues.length <= issues.length) {
+            title = parsed.title;
+            body = parsed.body;
+            provider = retry.provider;
+            reason = `Recipe “${recipe.title}” · LLM story (spoken-context retry)`;
+          }
+        }
       }
     }
 

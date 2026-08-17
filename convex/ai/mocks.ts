@@ -264,7 +264,7 @@ export function mockReadAlongStory(args: {
   if (args.ageBand === "elementary") {
     return {
       title: `The Garden Map`,
-      body: `${name} found a folded paper in the kitchen drawer. It was a map of the backyard garden, with a tiny X by the old oak. After lunch, ${name} followed the path past tomatoes, mint, and a sleepy bee. Under a flat stone by the oak, there was a tin. Inside was a note: "Leave something kind for the next explorer." ${name} drew a picture of the garden, tucked it in the tin, and put the stone back. The topic of ${topic} could wait. Today was for noticing.`,
+      body: `${name} found a folded paper in the kitchen drawer. It was a map of the backyard garden, with a tiny X by the old oak. After lunch, ${name} followed the path past tomatoes, mint, and a sleepy bee. Under a flat stone by the oak, there was a tin box. Inside was a note: "Leave something kind for the next explorer." ${name} drew a picture of the garden, tucked it in the tin box, and put the stone back. The topic of ${topic} could wait. Today was for noticing.`,
     };
   }
 

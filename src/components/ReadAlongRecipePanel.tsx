@@ -8,6 +8,7 @@ import {
   buildReadAlongRecipePrompt,
   parseMoralLessons,
   recipeTitleFromFields,
+  recipeUsesCustomPrompt,
 } from "../../convex/lib/readAlongPrompt";
 import {
   Badge,
@@ -81,7 +82,7 @@ export function ReadAlongRecipePanel({
       moralLessons: recipe.moralLessons,
       length: recipe.length,
     });
-    const isCustom = recipe.aiPrompt.trim() !== autoPrompt.trim();
+    const isCustom = recipeUsesCustomPrompt(recipe.aiPrompt, autoPrompt);
     setEditId(recipe._id);
     setCustomize(isCustom);
     setForm({
