@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import {
   getCurrentUser,
+  getCurrentUserOrNull,
   getPrimaryAcademyForUser,
   getPrimaryFamilyForUser,
   requireRole,
@@ -73,7 +74,10 @@ export const myFamily = query({
   args: {},
   returns: v.union(familyDocValidator, v.null()),
   handler: async (ctx) => {
-    const user = await getCurrentUser(ctx);
+    const user = await getCurrentUserOrNull(ctx);
+    if (!user) {
+      return null;
+    }
     return await getPrimaryFamilyForUser(ctx, user._id);
   },
 });

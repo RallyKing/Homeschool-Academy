@@ -284,7 +284,7 @@ function NavDropdown({
 
 function NavInner() {
   const user = useQuery(api.users.current);
-  const family = useQuery(api.users.myFamily);
+  const family = useQuery(api.users.myFamily, user ? {} : "skip");
   const [wallNow] = useState(() => Date.now());
   const wallUnread = useQuery(
     api.feed.unreadCount,
