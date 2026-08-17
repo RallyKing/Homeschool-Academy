@@ -14,6 +14,13 @@ import {
 } from "@/components/ui";
 import { localIsoDate, localWeekStart } from "@/lib/dates";
 import {
+  IDLE_PAUSE_MESSAGE,
+  IDLE_PAUSE_MS,
+  latestWordMarks,
+  shouldIdlePause,
+  wordFeedback,
+} from "@/lib/readAlongFeedback";
+import {
   micControlLabel,
   requestLeaveReadAlong,
 } from "@/lib/leaveReadAlong";
@@ -64,6 +71,7 @@ export function ReadAlongPlayer({
   }) => void;
 }) {
   const data = useQuery(api.readAlong.getSession, { sessionId });
+  const wordEvents = useQuery(api.readAlong.listWordEvents, { sessionId });
   const recordWordResults = useMutation(api.readAlong.recordWordResults);
   const enterPractice = useMutation(api.readAlong.enterPractice);
   const recordPracticeWord = useMutation(api.readAlong.recordPracticeWord);
@@ -89,6 +97,10 @@ export function ReadAlongPlayer({
   const [practiceIndex, setPracticeIndex] = useState(0);
   const [finishing, setFinishing] = useState(false);
   const [heard, setHeard] = useState("");
+  const [idlePaused, setIdlePaused] = useState(false);
+  const [localMarks, setLocalMarks] = useState<
+    Record<number, WordEvent["result"]>
+  >({});
 
   const pendingRef = useRef<WordEvent[]>([]);
   const indexRef = useRef(0);
@@ -112,6 +124,9 @@ export function ReadAlongPlayer({
   const flushTimerRef = useRef<number | null>(null);
   const wordsRef = useRef<string[]>([]);
   const processHeardRef = useRef<(transcript: string) => void>(() => {});
+  const idleTimerRef = useRef<number | null>(null);
+  const lastActivityRef = useRef(0);
+  const noteReaderActivityRef = useRef<() => void>(() => {});
 
   const micOk = speechRecognitionSupported();
   const ttsOk = ttsSupported();
@@ -128,6 +143,10 @@ export function ReadAlongPlayer({
   const practiced = useMemo(
     () => session?.practicedWords ?? [],
     [session?.practicedWords],
+  );
+  const serverMarks = useMemo(
+    () => latestWordMarks(wordEvents ?? []),
+    [wordEvents],
   );
 
   wordsRef.current = words;
@@ -193,6 +212,13 @@ export function ReadAlongPlayer({
     if (resumeTimerRef.current != null) {
       window.clearTimeout(resumeTimerRef.current);
       resumeTimerRef.current = null;
+    }
+  }, []);
+
+  const clearIdleTimer = useCallback(() => {
+    if (idleTimerRef.current != null) {
+      window.clearTimeout(idleTimerRef.current);
+      idleTimerRef.current = null;
     }
   }, []);
 
@@ -280,11 +306,20 @@ export function ReadAlongPlayer({
         recognitionRef.current?.stop();
         recognitionRef.current = null;
         setListening(false);
+        clearIdleTimer();
       }
       pendingRef.current = [...pendingRef.current, ...events];
+      setLocalMarks((prev) => {
+        const nextMarks = { ...prev };
+        for (const event of events) {
+          nextMarks[event.wordIndex] = event.result;
+        }
+        return nextMarks;
+      });
+      noteReaderActivityRef.current();
       scheduleFlush(next, helpedWord ? [helpedWord] : []);
     },
-    [clearGrace, scheduleFlush, skipSkippable, words],
+    [clearGrace, clearIdleTimer, scheduleFlush, skipSkippable, words],
   );
 
   const advance = useCallback(
@@ -371,6 +406,8 @@ export function ReadAlongPlayer({
       listeningRef.current = true;
       setListening(true);
       setListenError(null);
+      setIdlePaused(false);
+      noteReaderActivityRef.current();
     } catch {
       setListenError("Could not start the microphone. Try again, or tap Next.");
     }
@@ -384,9 +421,33 @@ export function ReadAlongPlayer({
     setListening(false);
     clearGrace();
     clearResumeTimer();
+    clearIdleTimer();
     recognitionRef.current?.stop();
     recognitionRef.current = null;
-  }, [clearGrace, clearResumeTimer]);
+  }, [clearGrace, clearIdleTimer, clearResumeTimer]);
+
+  const noteReaderActivity = useCallback(() => {
+    lastActivityRef.current = Date.now();
+    clearIdleTimer();
+    if (!listeningRef.current) return;
+    idleTimerRef.current = window.setTimeout(() => {
+      idleTimerRef.current = null;
+      if (
+        !shouldIdlePause({
+          listening: listeningRef.current,
+          lastActivityAt: lastActivityRef.current,
+          now: Date.now(),
+        })
+      ) {
+        return;
+      }
+      stopListening();
+      setIdlePaused(true);
+      notify(IDLE_PAUSE_MESSAGE, "info");
+    }, IDLE_PAUSE_MS);
+  }, [clearIdleTimer, notify, stopListening]);
+
+  noteReaderActivityRef.current = noteReaderActivity;
 
   const leaveStory = useCallback(() => {
     const status = session?.status ?? "completed";
@@ -415,12 +476,13 @@ export function ReadAlongPlayer({
     listeningRef.current = false;
     setListening(false);
     clearGrace();
+    clearIdleTimer();
     listenGenRef.current += 1;
     if (next.command === "stop") {
       recognitionRef.current?.stop();
     }
     recognitionRef.current = null;
-  }, [clearGrace]);
+  }, [clearGrace, clearIdleTimer]);
 
   const handleMiss = useCallback(() => {
     const i = indexRef.current;
@@ -489,6 +551,7 @@ export function ReadAlongPlayer({
     if (!hasNewUnmatchedSpeech(transcript, transcriptAtLastMatchRef.current)) {
       return;
     }
+    noteReaderActivityRef.current();
     if (graceTimerRef.current != null) return;
     graceTimerRef.current = window.setTimeout(() => {
       graceTimerRef.current = null;
@@ -511,6 +574,9 @@ export function ReadAlongPlayer({
       }
       if (flushTimerRef.current != null) {
         window.clearTimeout(flushTimerRef.current);
+      }
+      if (idleTimerRef.current != null) {
+        window.clearTimeout(idleTimerRef.current);
       }
     };
   }, []);
@@ -759,30 +825,33 @@ export function ReadAlongPlayer({
             <p className="read-along-text">
               {words.map((word, i) => {
                 const currentWord = i === effectiveIndex;
-                const helped = helpWords.some(
-                  (h) =>
-                    h.toLowerCase() === normalizeDisplay(word).toLowerCase() &&
-                    i < index,
-                );
+                const result = localMarks[i] ?? serverMarks.get(i);
+                const { star, missed } = wordFeedback(result);
                 return (
-                  <button
-                    key={`${word}-${i}`}
-                    type="button"
-                    ref={currentWord ? currentWordElRef : undefined}
-                    className={
-                      currentWord
-                        ? "read-along-word read-along-word-current"
-                        : helped
-                          ? "read-along-word read-along-word-helped"
-                          : "read-along-word"
-                    }
-                    onClick={() => {
-                      if (ttsOk) speakText(normalizeDisplay(word));
-                      void openVocab(word);
-                    }}
-                  >
-                    {word}
-                  </button>
+                  <span key={`${word}-${i}`} className="read-along-word-wrap">
+                    <button
+                      type="button"
+                      ref={currentWord ? currentWordElRef : undefined}
+                      className={[
+                        "read-along-word",
+                        currentWord ? "read-along-word-current" : "",
+                        missed ? "read-along-word-missed" : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                      onClick={() => {
+                        if (ttsOk) speakText(normalizeDisplay(word));
+                        void openVocab(word);
+                      }}
+                    >
+                      {word}
+                    </button>
+                    {star ? (
+                      <span className="read-along-word-star" aria-hidden>
+                        ★
+                      </span>
+                    ) : null}
+                  </span>
                 );
               })}
             </p>
@@ -844,7 +913,14 @@ export function ReadAlongPlayer({
                 <Button
                   size="lg"
                   className="read-along-dock-btn"
-                  onClick={() => (listening ? stopListening() : startListening())}
+                  onClick={() => {
+                    if (listening) {
+                      stopListening();
+                      setIdlePaused(false);
+                    } else {
+                      startListening();
+                    }
+                  }}
                   variant={listening ? "secondary" : "primary"}
                   title={listening ? "Pause listening" : "Start listening"}
                   aria-pressed={listening}
@@ -896,7 +972,9 @@ export function ReadAlongPlayer({
               ) : null}
             </>
           )}
-          {heard && !inPractice ? (
+          {idlePaused && !listening ? (
+            <p className="read-along-dock-heard">{IDLE_PAUSE_MESSAGE}</p>
+          ) : heard && !inPractice ? (
             <p className="read-along-dock-heard">Heard: {heard}</p>
           ) : null}
         </div>

@@ -785,6 +785,7 @@ html {
   line-height: 2.15;
   font-weight: 550;
   letter-spacing: 0.01em;
+  padding-top: 0.45em;
 }
 
 @media (min-width: 640px) {
@@ -817,8 +818,25 @@ html {
   box-shadow: 0 0 0 2px color-mix(in srgb, #14b8a6 55%, transparent);
 }
 
-.read-along-word-helped {
-  background: color-mix(in srgb, var(--warning, #b45309) 22%, transparent);
+.read-along-word-wrap {
+  position: relative;
+  display: inline-block;
+}
+
+.read-along-word-star {
+  position: absolute;
+  top: -0.42em;
+  right: -0.12em;
+  font-size: 0.58em;
+  line-height: 1;
+  color: #c4a015;
+  pointer-events: none;
+}
+
+.read-along-word-helped,
+.read-along-word-missed {
+  background: color-mix(in srgb, var(--danger, #b91c1c) 16%, transparent);
+  box-shadow: 0 2px 0 0 color-mix(in srgb, var(--danger, #b91c1c) 62%, transparent);
 }
 
 .read-along-session {
