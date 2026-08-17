@@ -37,3 +37,59 @@ export function shouldIdlePause(args: {
   if (!args.listening) return false;
   return args.now - args.lastActivityAt > IDLE_PAUSE_MS;
 }
+
+export function previousReadableIndex(words: string[], from: number): number {
+  let i = Math.min(from, words.length) - 1;
+  while (i >= 0 && !/[a-z0-9]/i.test(words[i] ?? "")) {
+    i -= 1;
+  }
+  return i;
+}
+
+export function backupWordState(args: {
+  words: string[];
+  currentIndex: number;
+  localMarks: Record<number, WordResult>;
+  pending: Array<{ wordIndex: number; word: string; result: WordResult }>;
+}): {
+  canBackup: boolean;
+  nextIndex: number;
+  localMarks: Record<number, WordResult>;
+  pending: Array<{ wordIndex: number; word: string; result: WordResult }>;
+  hiddenFrom: number;
+} {
+  const nextIndex = previousReadableIndex(args.words, args.currentIndex);
+  if (nextIndex < 0) {
+    return {
+      canBackup: false,
+      nextIndex: args.currentIndex,
+      localMarks: args.localMarks,
+      pending: args.pending,
+      hiddenFrom: args.currentIndex,
+    };
+  }
+  const localMarks: Record<number, WordResult> = {};
+  for (const [key, value] of Object.entries(args.localMarks)) {
+    const index = Number(key);
+    if (index < nextIndex) localMarks[index] = value;
+  }
+  return {
+    canBackup: true,
+    nextIndex,
+    localMarks,
+    pending: args.pending.filter((event) => event.wordIndex < nextIndex),
+    hiddenFrom: nextIndex,
+  };
+}
+
+export function visibleWordResult(
+  index: number,
+  localMarks: Record<number, WordResult>,
+  serverMarks: Map<number, WordResult>,
+  hiddenFrom: number | null,
+): WordResult | undefined {
+  const local = localMarks[index];
+  if (local !== undefined) return local;
+  if (hiddenFrom != null && index >= hiddenFrom) return undefined;
+  return serverMarks.get(index);
+}

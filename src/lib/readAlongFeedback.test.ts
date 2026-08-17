@@ -2,8 +2,11 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   IDLE_PAUSE_MS,
-  latestWordMarks,
+  backupWordState,
+  previousReadableIndex,
   shouldIdlePause,
+  visibleWordResult,
+  latestWordMarks,
   wordFeedback,
 } from "./readAlongFeedback.ts";
 
@@ -68,6 +71,71 @@ describe("shouldIdlePause", () => {
         now: 60_000,
       }),
       false,
+    );
+  });
+});
+
+describe("previousReadableIndex", () => {
+  it("steps back over punctuation to the previous word", () => {
+    assert.equal(previousReadableIndex(["The", "cat", ",", "sat"], 3), 1);
+  });
+
+  it("returns -1 on the first readable word", () => {
+    assert.equal(previousReadableIndex(["The", "cat"], 0), -1);
+  });
+});
+
+describe("backupWordState", () => {
+  it("moves the cursor back and clears later stars and misses", () => {
+    const next = backupWordState({
+      words: ["The", "cat", "sat", "on"],
+      currentIndex: 3,
+      localMarks: { 0: "correct", 1: "correct", 2: "helped" },
+      pending: [
+        { wordIndex: 1, word: "cat", result: "correct" },
+        { wordIndex: 2, word: "sat", result: "helped" },
+      ],
+    });
+    assert.equal(next.canBackup, true);
+    assert.equal(next.nextIndex, 2);
+    assert.deepEqual(next.localMarks, { 0: "correct", 1: "correct" });
+    assert.deepEqual(next.pending, [
+      { wordIndex: 1, word: "cat", result: "correct" },
+    ]);
+    assert.equal(next.hiddenFrom, 2);
+  });
+
+  it("cannot backup from the first word", () => {
+    const next = backupWordState({
+      words: ["The", "cat"],
+      currentIndex: 0,
+      localMarks: {},
+      pending: [],
+    });
+    assert.equal(next.canBackup, false);
+    assert.equal(next.nextIndex, 0);
+  });
+});
+
+describe("visibleWordResult", () => {
+  it("hides server stars from the backup point forward", () => {
+    const server = new Map([
+      [0, "correct"],
+      [1, "correct"],
+      [2, "helped"],
+    ] as const);
+    assert.equal(
+      visibleWordResult(1, {}, server, 1),
+      undefined,
+    );
+    assert.equal(visibleWordResult(0, {}, server, 1), "correct");
+  });
+
+  it("keeps a newly logged local mark after backup", () => {
+    const server = new Map([[1, "correct"]] as const);
+    assert.equal(
+      visibleWordResult(1, { 1: "retry_ok" }, server, 1),
+      "retry_ok",
     );
   });
 });

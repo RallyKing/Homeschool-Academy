@@ -16,8 +16,11 @@ import { localIsoDate, localWeekStart } from "@/lib/dates";
 import {
   IDLE_PAUSE_MESSAGE,
   IDLE_PAUSE_MS,
+  backupWordState,
   latestWordMarks,
+  previousReadableIndex,
   shouldIdlePause,
+  visibleWordResult,
   wordFeedback,
 } from "@/lib/readAlongFeedback";
 import {
@@ -101,6 +104,7 @@ export function ReadAlongPlayer({
   const [localMarks, setLocalMarks] = useState<
     Record<number, WordEvent["result"]>
   >({});
+  const [hiddenFrom, setHiddenFrom] = useState<number | null>(null);
 
   const pendingRef = useRef<WordEvent[]>([]);
   const indexRef = useRef(0);
@@ -331,6 +335,30 @@ export function ReadAlongPlayer({
     },
     [advanceThrough, words],
   );
+
+  const backupOneWord = useCallback(() => {
+    const next = backupWordState({
+      words: wordsRef.current,
+      currentIndex: indexRef.current,
+      localMarks,
+      pending: pendingRef.current,
+    });
+    if (!next.canBackup) return;
+    if (flushTimerRef.current != null) {
+      window.clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = null;
+    }
+    pendingRef.current = next.pending;
+    indexRef.current = next.nextIndex;
+    setIndex(next.nextIndex);
+    setLocalMarks(next.localMarks);
+    setHiddenFrom(next.hiddenFrom);
+    missesRef.current = 0;
+    setMisses(0);
+    setHeard("");
+    clearGrace();
+    noteReaderActivityRef.current();
+  }, [clearGrace, localMarks]);
 
   const startListening = useCallback(() => {
     const Ctor = getSpeechRecognitionCtor();
@@ -825,7 +853,12 @@ export function ReadAlongPlayer({
             <p className="read-along-text">
               {words.map((word, i) => {
                 const currentWord = i === effectiveIndex;
-                const result = localMarks[i] ?? serverMarks.get(i);
+                const result = visibleWordResult(
+                  i,
+                  localMarks,
+                  serverMarks,
+                  hiddenFrom,
+                );
                 const { star, missed } = wordFeedback(result);
                 return (
                   <span key={`${word}-${i}`} className="read-along-word-wrap">
@@ -929,6 +962,21 @@ export function ReadAlongPlayer({
                   {micControlLabel(listening)}
                 </Button>
               ) : null}
+              <Button
+                size="lg"
+                className="read-along-dock-btn"
+                variant="secondary"
+                onClick={backupOneWord}
+                disabled={
+                  previousReadableIndex(
+                    words,
+                    Math.min(effectiveIndex, words.length),
+                  ) < 0
+                }
+                title="Back a word"
+              >
+                Backup
+              </Button>
               <Button
                 size="lg"
                 className="read-along-dock-btn"
