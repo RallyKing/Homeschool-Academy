@@ -6,6 +6,7 @@ import { useQuery } from "convex/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { api } from "../../convex/_generated/api";
+import { HardRefreshButton } from "@/components/HardRefreshButton";
 import { InstallAppButton } from "@/components/InstallAppButton";
 import { useViewAsStudentId } from "@/hooks/useViewAsStudentId";
 import { withViewAs } from "@/lib/viewAs";
@@ -162,6 +163,10 @@ function NavShell({ children }: { children: React.ReactNode }) {
   return (
     <header className="glass-nav sticky top-0 z-40">
       <Container size="wide" className="flex items-center justify-between gap-3 py-3">
+        <div className="flex min-w-0 items-center gap-0.5">
+          <BrandLink />
+          <HardRefreshButton />
+        </div>
         {children}
       </Container>
     </header>
@@ -318,7 +323,6 @@ function NavInner() {
   if (user === undefined) {
     return (
       <NavShell>
-        <BrandLink />
         <span className="text-sm text-[var(--muted-fg)]">Loading…</span>
       </NavShell>
     );
@@ -327,7 +331,6 @@ function NavInner() {
   if (user === null) {
     return (
       <NavShell>
-        <BrandLink />
         <nav className="flex items-center gap-1">
           <InstallAppButton />
           <NavLink href="/sign-in">Sign in</NavLink>
@@ -357,7 +360,6 @@ function NavInner() {
 
   return (
     <NavShell>
-      <BrandLink />
       <nav className="flex max-w-[78%] flex-wrap items-center justify-end gap-0.5">
         {entries.map((entry) =>
           entry.kind === "link" ? (
@@ -403,9 +405,6 @@ export function Nav() {
     <Suspense
       fallback={
         <NavShell>
-          <span className="font-display text-[15px] font-semibold tracking-tight">
-            Homeschool Academy
-          </span>
           <span className="text-sm text-[var(--muted-fg)]">Loading…</span>
         </NavShell>
       }

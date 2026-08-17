@@ -14,6 +14,10 @@ import {
 } from "@/components/ui";
 import { localIsoDate, localWeekStart } from "@/lib/dates";
 import {
+  micControlLabel,
+  requestLeaveReadAlong,
+} from "@/lib/leaveReadAlong";
+import {
   farthestMatchedIndex,
   getSpeechRecognitionCtor,
   hasNewUnmatchedSpeech,
@@ -384,6 +388,21 @@ export function ReadAlongPlayer({
     recognitionRef.current = null;
   }, [clearGrace, clearResumeTimer]);
 
+  const leaveStory = useCallback(() => {
+    const status = session?.status ?? "completed";
+    if (
+      !requestLeaveReadAlong({
+        status,
+        confirm: (message) => window.confirm(message),
+      })
+    ) {
+      return;
+    }
+    stopListening();
+    stopSpeaking();
+    onExit();
+  }, [onExit, session?.status, stopListening]);
+
   const resumeMicAfterHelp = useCallback(() => {
     if (indexRef.current >= wordsRef.current.length) return;
     if (micAfterHelpFinished(micIntentRef.current).command !== "start") return;
@@ -621,10 +640,24 @@ export function ReadAlongPlayer({
   }
 
   if (data === undefined) {
-    return <p className="text-sm text-[var(--muted)]">Loading story…</p>;
+    return (
+      <div className="space-y-3">
+        <Button variant="ghost" size="sm" onClick={onExit} title="Switch story">
+          Back
+        </Button>
+        <p className="text-sm text-[var(--muted)]">Loading story…</p>
+      </div>
+    );
   }
   if (data === null || !session || !story) {
-    return <EmptyState>This read-along session is gone.</EmptyState>;
+    return (
+      <div className="space-y-3">
+        <Button variant="ghost" size="sm" onClick={onExit} title="Switch story">
+          Back
+        </Button>
+        <EmptyState>This read-along session is gone.</EmptyState>
+      </div>
+    );
   }
 
   const inPractice = session.status === "practice";
@@ -646,7 +679,7 @@ export function ReadAlongPlayer({
         title={story.title}
         description="This session is finished."
         action={
-          <Button variant="ghost" size="sm" onClick={onExit}>
+          <Button variant="ghost" size="sm" onClick={onExit} title="Switch story">
             Back
           </Button>
         }
@@ -677,8 +710,8 @@ export function ReadAlongPlayer({
         </div>
         <div className="flex flex-wrap gap-2">
           <Badge tone="accent">{localPoints} pts</Badge>
-          <Button variant="ghost" size="sm" onClick={onExit}>
-            Exit
+          <Button variant="ghost" size="sm" onClick={leaveStory} title="Switch story">
+            Back
           </Button>
         </div>
       </div>
@@ -766,6 +799,15 @@ export function ReadAlongPlayer({
 
       <nav className="read-along-dock" aria-label="Read-along controls">
         <div className="read-along-dock-inner">
+          <Button
+            size="lg"
+            className="read-along-dock-btn"
+            variant="ghost"
+            onClick={leaveStory}
+            title="Switch story"
+          >
+            Back
+          </Button>
           {inPractice ? (
             remainingPractice.length === 0 ? (
               <Button
@@ -804,8 +846,11 @@ export function ReadAlongPlayer({
                   className="read-along-dock-btn"
                   onClick={() => (listening ? stopListening() : startListening())}
                   variant={listening ? "secondary" : "primary"}
+                  title={listening ? "Pause listening" : "Start listening"}
+                  aria-pressed={listening}
                 >
-                  {listening ? "Stop mic" : "Start mic"}
+                  {listening ? <PauseIcon /> : <PlayIcon />}
+                  {micControlLabel(listening)}
                 </Button>
               ) : null}
               <Button
@@ -933,6 +978,23 @@ export function ReadAlongPlayer({
         )}
       </Modal>
     </div>
+  );
+}
+
+function PlayIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden fill="currentColor">
+      <path d="M4.2 2.4a.75.75 0 0 1 1.14-.64l8.1 5.1a.75.75 0 0 1 0 1.28l-8.1 5.1A.75.75 0 0 1 4.2 12.6V2.4Z" />
+    </svg>
+  );
+}
+
+function PauseIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden fill="currentColor">
+      <rect x="3.5" y="2.5" width="3.2" height="11" rx="0.9" />
+      <rect x="9.3" y="2.5" width="3.2" height="11" rx="0.9" />
+    </svg>
   );
 }
 
