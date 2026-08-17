@@ -26,6 +26,7 @@ import {
   shouldDeferMicRestart,
   storyIndexAtNarrationChar,
   storyNarrationChunks,
+  chunkStoryForReadAloud,
   ttsRateForPreset,
   unmatchedTranscript,
   wordsMatch,
@@ -425,5 +426,41 @@ describe("read-aloud TTS settings", () => {
     assert.equal(chunks[0]?.text.endsWith("seven."), true);
     assert.equal(chunks[0]?.text.includes(" "), true);
     assert.ok((chunks[0]?.tokenCount ?? 0) <= 42);
+  });
+
+  it("chunkStoryForReadAloud returns multi-word sentences, never one word per chunk", () => {
+    const tokens = [
+      "Joyella",
+      "found",
+      "a",
+      "tin",
+      "can.",
+      "Then",
+      "she",
+      "ran",
+      "home.",
+    ];
+    const chunks = chunkStoryForReadAloud(tokens);
+    assert.ok(chunks.length >= 1);
+    for (const chunk of chunks) {
+      assert.equal(chunk.text.includes(" "), true, chunk.text);
+      assert.ok(chunk.tokenCount >= 2, chunk.text);
+      assert.equal(/\s/.test(chunk.text), true);
+    }
+    assert.equal(
+      chunks.some((chunk) => !chunk.text.includes(" ")),
+      false,
+    );
+  });
+
+  it("does not turn period-after-every-word tokens into spelling-bee utterances", () => {
+    const tokens = ["Joyella.", "Found.", "A.", "Tin.", "Can."];
+    const chunks = chunkStoryForReadAloud(tokens);
+    assert.equal(chunks.length, 1);
+    assert.equal(chunks[0]?.text.includes(" "), true);
+    assert.equal(chunks.some((chunk) => chunk.text === "Joyella."), false);
+    assert.equal(chunks.some((chunk) => chunk.text === "Found."), false);
+    assert.match(chunks[0]?.text ?? "", /Joyella Found A Tin Can/);
+    assert.equal(/\w\.\s+\w/.test(chunks[0]?.text ?? ""), false);
   });
 });

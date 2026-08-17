@@ -483,8 +483,9 @@ export function remainingStoryWords(
   return words.slice(Math.max(0, startIndex));
 }
 
-/** Pack complete sentences into one TTS utterance (story pacing, not one word). */
+/** Pack 1–3 complete sentences into one TTS utterance (never one word). */
 export const MAX_NARRATION_CHUNK_WORDS = 40;
+export const MAX_SENTENCES_PER_UTTERANCE = 3;
 
 export type StoryNarrationChunk = {
   text: string;
@@ -496,13 +497,20 @@ function isSentenceEndToken(word: string): boolean {
   return /[.!?]["'”’)]*$/.test(word.trim());
 }
 
-export function storyNarrationChunks(
+function stripTrailingSentencePunct(word: string): string {
+  const stripped = word.replace(/[.!?]+(?=["'”’)]*$)/, "");
+  return stripped || word;
+}
+
+function utteranceTextFromTokens(tokens: string[]): string {
+  return tokens.join(" ").replace(/\s+/g, " ").trim();
+}
+
+function splitStorySentences(
   words: string[],
   startIndex: number,
-): StoryNarrationChunk[] {
+): Array<{ tokens: string[]; start: number }> {
   const from = Math.max(0, startIndex);
-  if (from >= words.length) return [];
-
   const sentences: Array<{ tokens: string[]; start: number }> = [];
   let tokens: string[] = [];
   let start = from;
@@ -519,33 +527,138 @@ export function storyNarrationChunks(
   if (tokens.length > 0) {
     sentences.push({ tokens, start });
   }
+  return sentences;
+}
+
+/**
+ * "Joyella. Found. A. Tin." is not four sentences — Windows TTS would
+ * pause like a spelling bee. Glue consecutive one-word "sentences".
+ */
+function mergeFalseSentenceBoundaries(
+  sentences: Array<{ tokens: string[]; start: number }>,
+): Array<{ tokens: string[]; start: number }> {
+  const merged: Array<{ tokens: string[]; start: number }> = [];
+  let singles: string[] = [];
+  let singlesStart = 0;
+
+  const flushSingles = () => {
+    if (singles.length === 0) return;
+    const tokens = singles.map((word, i) =>
+      i === singles.length - 1 ? word : stripTrailingSentencePunct(word),
+    );
+    merged.push({ tokens, start: singlesStart });
+    singles = [];
+  };
+
+  for (const sentence of sentences) {
+    if (sentence.tokens.length === 1) {
+      if (singles.length === 0) singlesStart = sentence.start;
+      singles.push(sentence.tokens[0]!);
+      continue;
+    }
+    if (singles.length >= 2) {
+      merged.push({
+        tokens: [
+          ...singles.map((word) => stripTrailingSentencePunct(word)),
+          ...sentence.tokens,
+        ],
+        start: singlesStart,
+      });
+      singles = [];
+      continue;
+    }
+    if (singles.length === 1) {
+      merged.push({
+        tokens: [singles[0]!, ...sentence.tokens],
+        start: singlesStart,
+      });
+      singles = [];
+      continue;
+    }
+    merged.push(sentence);
+  }
+  flushSingles();
+  return merged;
+}
+
+/** Strings actually passed to speechSynthesis.speak() for Read to me. */
+export function chunkStoryForReadAloud(
+  words: string[],
+  startIndex = 0,
+): StoryNarrationChunk[] {
+  const from = Math.max(0, startIndex);
+  if (from >= words.length) return [];
+
+  const sentences = mergeFalseSentenceBoundaries(
+    splitStorySentences(words, from),
+  );
 
   const chunks: StoryNarrationChunk[] = [];
   let packed: string[] = [];
   let packedStart = from;
-  for (const sentence of sentences) {
-    if (
-      packed.length > 0 &&
-      packed.length + sentence.tokens.length > MAX_NARRATION_CHUNK_WORDS
-    ) {
-      chunks.push({
-        text: packed.join(" "),
-        startStoryIndex: packedStart,
-        tokenCount: packed.length,
-      });
-      packed = [];
-    }
-    if (packed.length === 0) packedStart = sentence.start;
-    packed.push(...sentence.tokens);
-  }
-  if (packed.length > 0) {
+  let packedSentences = 0;
+
+  const flush = () => {
+    if (packed.length === 0) return;
     chunks.push({
-      text: packed.join(" "),
+      text: utteranceTextFromTokens(packed),
       startStoryIndex: packedStart,
       tokenCount: packed.length,
     });
+    packed = [];
+    packedSentences = 0;
+  };
+
+  for (const sentence of sentences) {
+    const nextCount = packed.length + sentence.tokens.length;
+    if (
+      packed.length > 0 &&
+      (packedSentences >= MAX_SENTENCES_PER_UTTERANCE ||
+        nextCount > MAX_NARRATION_CHUNK_WORDS)
+    ) {
+      flush();
+    }
+    if (packed.length === 0) packedStart = sentence.start;
+    packed.push(...sentence.tokens);
+    packedSentences += 1;
   }
-  return chunks;
+  flush();
+
+  const glued: StoryNarrationChunk[] = [];
+  for (const chunk of chunks) {
+    const prev = glued[glued.length - 1];
+    if (chunk.tokenCount < 2 && prev && prev.tokenCount >= 1) {
+      const tokens = [
+        ...splitHighlightWords(prev.text),
+        ...splitHighlightWords(chunk.text),
+      ];
+      prev.text = utteranceTextFromTokens(tokens);
+      prev.tokenCount = tokens.length;
+      continue;
+    }
+    glued.push({ ...chunk });
+  }
+  if (glued.length >= 2 && (glued[0]?.tokenCount ?? 0) < 2) {
+    const first = glued[0]!;
+    const second = glued[1]!;
+    const tokens = [
+      ...splitHighlightWords(first.text),
+      ...splitHighlightWords(second.text),
+    ];
+    glued.splice(0, 2, {
+      text: utteranceTextFromTokens(tokens),
+      startStoryIndex: first.startStoryIndex,
+      tokenCount: tokens.length,
+    });
+  }
+  return glued;
+}
+
+export function storyNarrationChunks(
+  words: string[],
+  startIndex: number,
+): StoryNarrationChunk[] {
+  return chunkStoryForReadAloud(words, startIndex);
 }
 
 export function storyIndexAtNarrationChar(
@@ -658,6 +771,13 @@ let speakGeneration = 0;
 let storyReadGen = 0;
 let highlightTimer: number | null = null;
 let highlightInterval: number | null = null;
+let speakDelayTimer: number | null = null;
+let resumeKeepAlive: number | null = null;
+/** Chrome GCs utterances that have no JS reference, cutting speech after the first word. */
+let activeUtterance: SpeechSynthesisUtterance | null = null;
+
+const SPEAK_AFTER_CANCEL_MS = 80;
+const TTS_RESUME_KEEPALIVE_MS = 10000;
 
 function clearHighlightTimers() {
   if (highlightTimer != null) {
@@ -668,6 +788,32 @@ function clearHighlightTimers() {
     window.clearInterval(highlightInterval);
     highlightInterval = null;
   }
+}
+
+function clearSpeakDelay() {
+  if (speakDelayTimer != null) {
+    window.clearTimeout(speakDelayTimer);
+    speakDelayTimer = null;
+  }
+}
+
+function clearResumeKeepAlive() {
+  if (resumeKeepAlive != null) {
+    window.clearInterval(resumeKeepAlive);
+    resumeKeepAlive = null;
+  }
+}
+
+function startResumeKeepAlive() {
+  clearResumeKeepAlive();
+  resumeKeepAlive = window.setInterval(() => {
+    if (!window.speechSynthesis.speaking) {
+      clearResumeKeepAlive();
+      return;
+    }
+    window.speechSynthesis.pause();
+    window.speechSynthesis.resume();
+  }, TTS_RESUME_KEEPALIVE_MS);
 }
 
 function resolveUtteranceVoice(
@@ -684,6 +830,8 @@ export function speakText(
     voiceURI?: string;
     onBoundaryWord?: (wordIndex: number) => void;
     onEnd?: () => void;
+    /** Default true. Read-to-me chains sentences without cancel() — Chrome/Win otherwise speaks one word. */
+    interrupt?: boolean;
   },
 ): void {
   if (!ttsSupported() || !text.trim()) {
@@ -693,58 +841,76 @@ export function speakText(
 
   const gen = ++speakGeneration;
   clearHighlightTimers();
-  window.speechSynthesis.cancel();
+  clearSpeakDelay();
+  clearResumeKeepAlive();
 
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.rate = clampTtsRate(opts?.rate ?? TTS_RATE_DEFAULT);
-  utterance.lang = SPEECH_LOCALE;
-  const voice = resolveUtteranceVoice(opts?.voiceURI);
-  if (voice) utterance.voice = voice;
-
-  const onDone = () => {
+  const begin = () => {
     if (gen !== speakGeneration) return;
-    clearHighlightTimers();
-    opts?.onEnd?.();
-  };
+    const utterance = new SpeechSynthesisUtterance(text);
+    activeUtterance = utterance;
+    utterance.rate = clampTtsRate(opts?.rate ?? TTS_RATE_DEFAULT);
+    utterance.lang = SPEECH_LOCALE;
+    const voice = resolveUtteranceVoice(opts?.voiceURI);
+    if (voice) utterance.voice = voice;
 
-  if (opts?.onBoundaryWord) {
-    let boundaryFired = false;
-    const words = splitHighlightWords(text);
-    utterance.onboundary = (event: SpeechSynthesisEvent) => {
+    const onDone = () => {
       if (gen !== speakGeneration) return;
-      if (event.name && event.name !== "word") return;
-      boundaryFired = true;
       clearHighlightTimers();
-      const idx = Math.min(
-        words.length - 1,
-        wordIndexAtChar(text, event.charIndex),
-      );
-      if (idx >= 0) opts.onBoundaryWord?.(idx);
+      clearResumeKeepAlive();
+      if (activeUtterance === utterance) activeUtterance = null;
+      opts?.onEnd?.();
     };
 
-    const msPerWord = Math.max(220, Math.round(1000 / (2.6 * utterance.rate)));
-    highlightTimer = window.setTimeout(() => {
-      if (gen !== speakGeneration || boundaryFired || words.length === 0) return;
-      let i = 0;
-      opts.onBoundaryWord?.(0);
-      highlightInterval = window.setInterval(() => {
-        if (gen !== speakGeneration) {
-          clearHighlightTimers();
+    if (opts?.onBoundaryWord) {
+      let boundaryFired = false;
+      const words = splitHighlightWords(text);
+      utterance.onboundary = (event: SpeechSynthesisEvent) => {
+        if (gen !== speakGeneration) return;
+        if (event.name && event.name !== "word") return;
+        boundaryFired = true;
+        clearHighlightTimers();
+        const idx = Math.min(
+          words.length - 1,
+          wordIndexAtChar(text, event.charIndex),
+        );
+        if (idx >= 0) opts.onBoundaryWord?.(idx);
+      };
+
+      const msPerWord = Math.max(220, Math.round(1000 / (2.6 * utterance.rate)));
+      highlightTimer = window.setTimeout(() => {
+        if (gen !== speakGeneration || boundaryFired || words.length === 0) {
           return;
         }
-        i += 1;
-        if (i >= words.length) {
-          clearHighlightTimers();
-          return;
-        }
-        opts.onBoundaryWord?.(i);
-      }, msPerWord);
-    }, 280);
+        let i = 0;
+        opts.onBoundaryWord?.(0);
+        highlightInterval = window.setInterval(() => {
+          if (gen !== speakGeneration) {
+            clearHighlightTimers();
+            return;
+          }
+          i += 1;
+          if (i >= words.length) {
+            clearHighlightTimers();
+            return;
+          }
+          opts.onBoundaryWord?.(i);
+        }, msPerWord);
+      }, 280);
+    }
+
+    utterance.onend = onDone;
+    utterance.onerror = onDone;
+    startResumeKeepAlive();
+    window.speechSynthesis.speak(utterance);
+  };
+
+  if (opts?.interrupt === false) {
+    begin();
+    return;
   }
 
-  utterance.onend = onDone;
-  utterance.onerror = onDone;
-  window.speechSynthesis.speak(utterance);
+  window.speechSynthesis.cancel();
+  speakDelayTimer = window.setTimeout(begin, SPEAK_AFTER_CANCEL_MS);
 }
 
 export function speakStoryFrom(
@@ -757,7 +923,7 @@ export function speakStoryFrom(
     onEnd?: () => void;
   },
 ): void {
-  const chunks = storyNarrationChunks(words, startIndex);
+  const chunks = chunkStoryForReadAloud(words, startIndex);
   const gen = ++storyReadGen;
   const speakChunk = (c: number) => {
     if (gen !== storyReadGen) return;
@@ -770,6 +936,7 @@ export function speakStoryFrom(
     speakText(chunk.text, {
       rate: opts?.rate,
       voiceURI: opts?.voiceURI,
+      interrupt: false,
       onBoundaryWord: (localIdx) => {
         if (gen !== storyReadGen) return;
         opts?.onWord?.(chunk.startStoryIndex + localIdx);
@@ -777,6 +944,12 @@ export function speakStoryFrom(
       onEnd: () => speakChunk(c + 1),
     });
   };
+
+  clearSpeakDelay();
+  if (typeof window !== "undefined" && "speechSynthesis" in window) {
+    speakDelayTimer = window.setTimeout(() => speakChunk(0), SPEAK_AFTER_CANCEL_MS);
+    return;
+  }
   speakChunk(0);
 }
 
@@ -784,6 +957,9 @@ export function stopSpeaking(): void {
   speakGeneration += 1;
   storyReadGen += 1;
   clearHighlightTimers();
+  clearSpeakDelay();
+  clearResumeKeepAlive();
+  activeUtterance = null;
   if (typeof window !== "undefined" && "speechSynthesis" in window) {
     window.speechSynthesis.cancel();
   }
