@@ -8,17 +8,24 @@ import {
   Badge,
   Button,
   EmptyState,
+  Input,
   Message,
   Modal,
   Section,
 } from "@/components/ui";
 import { localIsoDate, localWeekStart } from "@/lib/dates";
 import {
-  IDLE_PAUSE_MESSAGE,
-  IDLE_PAUSE_MS,
+  DEFAULT_IDLE_PAUSE_SEC,
+  IDLE_PAUSE_MAX_SEC,
+  IDLE_PAUSE_MIN_SEC,
+  IDLE_PAUSE_PRESETS_SEC,
   backupWordState,
+  idlePauseMessage,
+  idlePauseMs,
   latestWordMarks,
+  loadIdlePauseSec,
   previousReadableIndex,
+  saveIdlePauseSec,
   shouldIdlePause,
   visibleWordResult,
   wordFeedback,
@@ -28,11 +35,12 @@ import {
   requestLeaveReadAlong,
 } from "@/lib/leaveReadAlong";
 import {
-  farthestMatchedIndex,
+  advanceCreditedTranscript,
+  configureReadAlongRecognition,
   getSpeechRecognitionCtor,
   hasNewUnmatchedSpeech,
   isSkippableToken,
-  LOOKAHEAD_WORDS,
+  matchLookaheadSpeech,
   micAfterHelpFinished,
   micAfterRecognitionEnded,
   micAfterUserStop,
@@ -43,6 +51,7 @@ import {
   splitHighlightWords,
   stopSpeaking,
   ttsSupported,
+  unmatchedTranscript,
   type MicIntent,
 } from "@/lib/readAlongSpeech";
 import { DEFINITION_UNAVAILABLE } from "../../convex/lib/dictionaryCore";
@@ -102,6 +111,12 @@ export function ReadAlongPlayer({
   const [finishing, setFinishing] = useState(false);
   const [heard, setHeard] = useState("");
   const [idlePaused, setIdlePaused] = useState(false);
+  const [idleModalOpen, setIdleModalOpen] = useState(false);
+  const [idlePauseSec, setIdlePauseSec] = useState(DEFAULT_IDLE_PAUSE_SEC);
+  const [idleCustomOpen, setIdleCustomOpen] = useState(false);
+  const [idleCustomDraft, setIdleCustomDraft] = useState(
+    String(DEFAULT_IDLE_PAUSE_SEC),
+  );
   const [localMarks, setLocalMarks] = useState<
     Record<number, WordEvent["result"]>
   >({});
@@ -132,6 +147,7 @@ export function ReadAlongPlayer({
   const idleTimerRef = useRef<number | null>(null);
   const lastActivityRef = useRef(0);
   const noteReaderActivityRef = useRef<() => void>(() => {});
+  const idlePauseSecRef = useRef(DEFAULT_IDLE_PAUSE_SEC);
 
   const micOk = speechRecognitionSupported();
   const ttsOk = ttsSupported();
@@ -178,6 +194,17 @@ export function ReadAlongPlayer({
   useEffect(() => {
     listeningRef.current = listening;
   }, [listening]);
+
+  useEffect(() => {
+    const sec = loadIdlePauseSec();
+    idlePauseSecRef.current = sec;
+    setIdlePauseSec(sec);
+    const isPreset = (IDLE_PAUSE_PRESETS_SEC as readonly number[]).includes(sec);
+    if (!isPreset && sec !== DEFAULT_IDLE_PAUSE_SEC) {
+      setIdleCustomOpen(true);
+      setIdleCustomDraft(String(sec));
+    }
+  }, []);
 
   /* Hydrate resume position once when the session document arrives. */
   useEffect(() => {
@@ -281,14 +308,16 @@ export function ReadAlongPlayer({
       const start = indexRef.current;
       if (throughIndex < start) return;
       const events: WordEvent[] = [];
+      let firstLogged = true;
       for (let i = start; i <= throughIndex; i++) {
         const word = words[i];
         if (!word || isSkippableToken(word)) continue;
         events.push({
           wordIndex: i,
           word,
-          result: i === throughIndex ? lastResult : "correct",
+          result: firstLogged ? lastResult : "correct",
         });
+        firstLogged = false;
       }
       const next = skipSkippable(throughIndex + 1);
       indexRef.current = next;
@@ -369,10 +398,7 @@ export function ReadAlongPlayer({
     transcriptAtLastMatchRef.current = "";
 
     const rec = new Ctor();
-    rec.lang = "en-US";
-    rec.continuous = true;
-    rec.interimResults = true;
-    rec.maxAlternatives = 3;
+    configureReadAlongRecognition(rec);
     rec.onresult = (event) => {
       let combined = "";
       let interim = "";
@@ -428,6 +454,7 @@ export function ReadAlongPlayer({
       setListening(true);
       setListenError(null);
       setIdlePaused(false);
+      setIdleModalOpen(false);
       noteReaderActivityRef.current();
     } catch {
       setListenError("Could not start the microphone. Try again, or tap Next.");
@@ -446,10 +473,21 @@ export function ReadAlongPlayer({
     recognitionRef.current = null;
   }, [clearGrace, clearIdleTimer]);
 
+  const applyIdlePauseSec = useCallback((seconds: number) => {
+    const next = saveIdlePauseSec(seconds);
+    idlePauseSecRef.current = next;
+    setIdlePauseSec(next);
+    if (listeningRef.current) {
+      noteReaderActivityRef.current();
+    }
+    return next;
+  }, []);
+
   const noteReaderActivity = useCallback(() => {
     lastActivityRef.current = Date.now();
     clearIdleTimer();
     if (!listeningRef.current) return;
+    const idleMs = idlePauseMs(idlePauseSecRef.current);
     idleTimerRef.current = window.setTimeout(() => {
       idleTimerRef.current = null;
       if (
@@ -457,15 +495,16 @@ export function ReadAlongPlayer({
           listening: listeningRef.current,
           lastActivityAt: lastActivityRef.current,
           now: Date.now(),
+          idleMs,
         })
       ) {
         return;
       }
       stopListening();
       setIdlePaused(true);
-      notify(IDLE_PAUSE_MESSAGE, "info");
-    }, IDLE_PAUSE_MS);
-  }, [clearIdleTimer, notify, stopListening]);
+      setIdleModalOpen(true);
+    }, idleMs);
+  }, [clearIdleTimer, stopListening]);
 
   noteReaderActivityRef.current = noteReaderActivity;
 
@@ -561,21 +600,31 @@ export function ReadAlongPlayer({
     if (micIntentRef.current !== "live") return;
     lastTranscriptRef.current = transcript;
     const expectedWords = wordsRef.current;
-    const i = indexRef.current;
-    if (i >= expectedWords.length) return;
-    const lookAhead = missesRef.current === 0 ? LOOKAHEAD_WORDS : 0;
-    const matched = farthestMatchedIndex(
-      transcript,
-      expectedWords,
-      i,
-      lookAhead,
-    );
-    if (matched >= i) {
-      transcriptAtLastMatchRef.current = transcript;
+    if (indexRef.current >= expectedWords.length) return;
+
+    let credited = false;
+    while (indexRef.current < expectedWords.length) {
+      const heard = unmatchedTranscript(
+        transcript,
+        transcriptAtLastMatchRef.current,
+      );
+      const match = matchLookaheadSpeech(
+        heard,
+        expectedWords,
+        indexRef.current,
+      );
+      if (match.lastIndex < indexRef.current) break;
+      transcriptAtLastMatchRef.current = advanceCreditedTranscript(
+        transcript,
+        transcriptAtLastMatchRef.current,
+        match.consumedTokens,
+      );
       const result = missesRef.current > 0 ? "retry_ok" : "correct";
-      advanceThrough(matched, result);
-      return;
+      advanceThrough(match.lastIndex, result);
+      credited = true;
     }
+    if (credited) return;
+
     if (!hasNewUnmatchedSpeech(transcript, transcriptAtLastMatchRef.current)) {
       return;
     }
@@ -957,6 +1006,7 @@ export function ReadAlongPlayer({
                     if (listening) {
                       stopListening();
                       setIdlePaused(false);
+                      setIdleModalOpen(false);
                     } else {
                       startListening();
                     }
@@ -994,7 +1044,7 @@ export function ReadAlongPlayer({
                 }}
                 disabled={!current}
               >
-                Next / I read it
+                Next
               </Button>
               {current && ttsOk ? (
                 <Button
@@ -1026,7 +1076,9 @@ export function ReadAlongPlayer({
             </>
           )}
           {idlePaused && !listening ? (
-            <p className="read-along-dock-heard">{IDLE_PAUSE_MESSAGE}</p>
+            <p className="read-along-dock-heard">
+              {idlePauseMessage(idlePauseSec)}
+            </p>
           ) : heard && !inPractice ? (
             <p className="read-along-dock-heard">Heard: {heard}</p>
           ) : null}
@@ -1041,15 +1093,16 @@ export function ReadAlongPlayer({
           setVocabHighlight(-1);
         }}
         title={vocabWord || "Word"}
-        description="Dictionary definition."
+        description="Tap Read To Me to hear this word."
         size="md"
-        className="flex max-h-[min(90dvh,42rem)] min-w-0 flex-col overflow-hidden"
+        className="read-along-kid-modal flex max-h-[min(90dvh,42rem)] min-w-0 flex-col overflow-hidden"
         bodyClassName="max-h-[min(52vh,24rem)]"
-        footerClassName="justify-center"
+        footerClassName="justify-center gap-3"
         footer={
           <>
             <Button
               variant="secondary"
+              className="read-along-kid-btn"
               onClick={speakVocab}
               disabled={!ttsOk || !vocabDef || vocabDef === DEFINITION_UNAVAILABLE}
             >
@@ -1057,6 +1110,7 @@ export function ReadAlongPlayer({
             </Button>
             <Button
               variant="ghost"
+              className="read-along-kid-btn"
               onClick={() => {
                 stopSpeaking();
                 setVocabOpen(false);
@@ -1069,7 +1123,7 @@ export function ReadAlongPlayer({
         }
       >
         {vocabBusy ? (
-          <p className="text-sm text-[var(--muted)]">Looking up…</p>
+          <p className="text-lg text-[var(--muted)]">Looking up…</p>
         ) : (
           <div className="read-along-vocab min-w-0 space-y-3">
             {vocabPos ? (
@@ -1077,7 +1131,7 @@ export function ReadAlongPlayer({
                 {vocabPos}
               </p>
             ) : null}
-            <p className="read-along-vocab-text text-base leading-relaxed text-[var(--foreground)]">
+            <p className="read-along-vocab-text text-lg leading-relaxed text-[var(--foreground)]">
               {vocabDefWords.map((w, i) => (
                 <span
                   key={`def-${w}-${i}`}
@@ -1092,7 +1146,7 @@ export function ReadAlongPlayer({
               ))}
             </p>
             {vocabExample ? (
-              <p className="read-along-vocab-text text-sm text-[var(--muted)]">
+              <p className="read-along-vocab-text text-lg text-[var(--muted)]">
                 {vocabExampleWords.map((w, i) => {
                   const idx = vocabDefWords.length + i;
                   return (
@@ -1113,13 +1167,94 @@ export function ReadAlongPlayer({
           </div>
         )}
       </Modal>
+
+      <Modal
+        open={idleModalOpen}
+        onClose={() => setIdleModalOpen(false)}
+        title="Mic paused"
+        description="No reading was heard, so the microphone paused."
+        size="md"
+        className="read-along-kid-modal"
+        footerClassName="justify-center gap-3"
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              className="read-along-kid-btn"
+              onClick={() => setIdleModalOpen(false)}
+            >
+              Not now
+            </Button>
+            <Button
+              className="read-along-kid-btn"
+              onClick={() => startListening()}
+            >
+              Start mic
+            </Button>
+          </>
+        }
+      >
+        <p className="text-lg font-semibold text-[var(--foreground)]">
+          Pause after {idlePauseSec}s of no reading.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {IDLE_PAUSE_PRESETS_SEC.map((sec) => (
+            <Button
+              key={sec}
+              className="read-along-kid-chip"
+              variant={
+                idlePauseSec === sec && !idleCustomOpen ? "primary" : "secondary"
+              }
+              onClick={() => {
+                setIdleCustomOpen(false);
+                applyIdlePauseSec(sec);
+              }}
+            >
+              {sec} sec
+            </Button>
+          ))}
+          <Button
+            className="read-along-kid-chip"
+            variant={idleCustomOpen ? "primary" : "secondary"}
+            onClick={() => {
+              setIdleCustomOpen(true);
+              setIdleCustomDraft(String(idlePauseSec));
+            }}
+          >
+            Custom
+          </Button>
+        </div>
+        {idleCustomOpen ? (
+          <Input
+            label="Seconds"
+            type="number"
+            min={IDLE_PAUSE_MIN_SEC}
+            max={IDLE_PAUSE_MAX_SEC}
+            value={idleCustomDraft}
+            className="read-along-kid-input"
+            hint={`Between ${IDLE_PAUSE_MIN_SEC} and ${IDLE_PAUSE_MAX_SEC} seconds`}
+            onChange={(event) => setIdleCustomDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter") return;
+              event.currentTarget.blur();
+            }}
+            onBlur={() => {
+              const n = Number(idleCustomDraft);
+              const next = applyIdlePauseSec(
+                Number.isFinite(n) ? n : idlePauseSec,
+              );
+              setIdleCustomDraft(String(next));
+            }}
+          />
+        ) : null}
+      </Modal>
     </div>
   );
 }
 
 function PlayIcon() {
   return (
-    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden fill="currentColor">
+    <svg viewBox="0 0 16 16" width="22" height="22" aria-hidden fill="currentColor">
       <path d="M4.2 2.4a.75.75 0 0 1 1.14-.64l8.1 5.1a.75.75 0 0 1 0 1.28l-8.1 5.1A.75.75 0 0 1 4.2 12.6V2.4Z" />
     </svg>
   );
@@ -1127,7 +1262,7 @@ function PlayIcon() {
 
 function PauseIcon() {
   return (
-    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden fill="currentColor">
+    <svg viewBox="0 0 16 16" width="22" height="22" aria-hidden fill="currentColor">
       <rect x="3.5" y="2.5" width="3.2" height="11" rx="0.9" />
       <rect x="9.3" y="2.5" width="3.2" height="11" rx="0.9" />
     </svg>

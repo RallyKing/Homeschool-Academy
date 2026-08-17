@@ -1,4 +1,5 @@
-export const LOOKAHEAD_WORDS = 8;
+export const LOOKAHEAD_WORDS = 5;
+export const SPEECH_LOCALE = "en-US";
 
 export function normalizeWord(raw: string): string {
   return raw
@@ -113,44 +114,77 @@ export function transcriptMatchesWord(
   return last.some((t) => wordsMatch(expected, t));
 }
 
+function readableLookaheadWindow(
+  words: string[],
+  startIndex: number,
+  maxReadable: number,
+): Array<{ word: string; index: number }> {
+  const window: Array<{ word: string; index: number }> = [];
+  for (let i = startIndex; i < words.length && window.length < maxReadable; i++) {
+    const word = words[i];
+    if (!word || isSkippableToken(word)) continue;
+    window.push({ word, index: i });
+  }
+  return window;
+}
+
 /**
- * Walk the transcript against expected words from `startIndex`.
- * Matching a later word in the look-ahead window counts as keeping up
- * (skipped-over words are treated as read).
- * Returns the farthest matched word index, or -1 if none matched.
+ * Longest consecutive prefix of unread story words (2–5 readable, or 1)
+ * that appears in order in the transcript. Does not skip unread words.
+ * `consumedTokens` is how far into the transcript the last match reached.
  */
+export function matchLookaheadSpeech(
+  transcript: string,
+  words: string[],
+  startIndex: number,
+  lookAhead = LOOKAHEAD_WORDS,
+): { lastIndex: number; consumedTokens: number } {
+  const none = { lastIndex: -1, consumedTokens: 0 };
+  const tokens = tokenizeTranscript(transcript);
+  if (tokens.length === 0 || startIndex >= words.length) return none;
+
+  const cap = lookAhead <= 0 ? 1 : Math.min(lookAhead, LOOKAHEAD_WORDS);
+  const window = readableLookaheadWindow(words, startIndex, cap);
+  if (window.length === 0) return none;
+
+  let tokenIdx = 0;
+  let lastIndex = -1;
+  let consumedTokens = 0;
+
+  for (let w = 0; w < window.length; w++) {
+    const expected = window[w]!;
+    let found = false;
+    while (tokenIdx < tokens.length) {
+      const token = tokens[tokenIdx]!;
+      if (wordsMatch(expected.word, token)) {
+        lastIndex = expected.index;
+        tokenIdx += 1;
+        consumedTokens = tokenIdx;
+        found = true;
+        break;
+      }
+      const laterHit = window
+        .slice(w + 1)
+        .some((item) => wordsMatch(item.word, token));
+      if (laterHit) {
+        return { lastIndex, consumedTokens };
+      }
+      tokenIdx += 1;
+    }
+    if (!found) break;
+  }
+
+  return { lastIndex, consumedTokens };
+}
+
 export function farthestMatchedIndex(
   transcript: string,
   words: string[],
   startIndex: number,
   lookAhead = LOOKAHEAD_WORDS,
 ): number {
-  const tokens = tokenizeTranscript(transcript).slice(-24);
-  if (tokens.length === 0 || startIndex >= words.length) return -1;
-
-  const end = Math.min(words.length, startIndex + Math.max(0, lookAhead) + 1);
-  let expectedFrom = startIndex;
-  let lastMatched = -1;
-  let matchedCurrent = false;
-
-  for (const token of tokens) {
-    for (let i = expectedFrom; i < end; i++) {
-      const word = words[i];
-      if (!word || isSkippableToken(word)) continue;
-      if (!wordsMatch(word, token)) continue;
-      lastMatched = i;
-      expectedFrom = i + 1;
-      if (i === startIndex) matchedCurrent = true;
-      break;
-    }
-  }
-
-  if (lastMatched < startIndex) return -1;
-  if (!matchedCurrent && lastMatched > startIndex) {
-    const anchor = foldWord(words[lastMatched] ?? "");
-    if (anchor.length < 4) return -1;
-  }
-  return lastMatched;
+  return matchLookaheadSpeech(transcript, words, startIndex, lookAhead)
+    .lastIndex;
 }
 
 export type MicIntent = "off" | "live" | "paused";
@@ -232,27 +266,72 @@ export function micAfterUserStop(): { intent: "off"; command: "stop" } {
   return { intent: "off", command: "stop" };
 }
 
+function transcriptIsExtension(current: string[], previous: string[]): boolean {
+  if (previous.length === 0) return true;
+  if (current.length < previous.length) return false;
+  return previous.every(
+    (token, i) => foldWord(token) === foldWord(current[i] ?? ""),
+  );
+}
+
 /**
- * After a match, Chrome still reports the same finalized transcript.
- * That leftover text must not start a miss timer. New tokens (or a
- * fresh recognition session) should.
+ * Speech not yet credited. Leftover finalized text after a match is
+ * stripped so it cannot start a miss timer or jump the highlight.
  */
+export function unmatchedTranscript(
+  transcript: string,
+  previous: string,
+): string {
+  const current = tokenizeTranscript(transcript);
+  const prev = tokenizeTranscript(previous);
+  if (current.length === 0) return "";
+  if (transcriptIsExtension(current, prev)) {
+    return current.slice(prev.length).join(" ");
+  }
+  return current.join(" ");
+}
+
+export function advanceCreditedTranscript(
+  transcript: string,
+  previous: string,
+  consumedTokens: number,
+): string {
+  const current = tokenizeTranscript(transcript);
+  const prev = tokenizeTranscript(previous);
+  const take = Math.max(0, consumedTokens);
+  if (transcriptIsExtension(current, prev)) {
+    return current.slice(0, prev.length + take).join(" ");
+  }
+  return current.slice(0, take).join(" ");
+}
+
 export function hasNewUnmatchedSpeech(
   transcript: string,
   transcriptAtLastMatch: string,
 ): boolean {
-  const current = tokenizeTranscript(transcript);
-  const previous = tokenizeTranscript(transcriptAtLastMatch);
-  if (current.length === 0) return false;
-  if (previous.length === 0) return true;
-  const isExtension = previous.every(
-    (token, i) => foldWord(token) === foldWord(current[i] ?? ""),
-  );
-  if (isExtension) return current.length > previous.length;
-  const same =
-    current.length === previous.length &&
-    previous.every((token, i) => foldWord(token) === foldWord(current[i] ?? ""));
-  return !same;
+  return unmatchedTranscript(transcript, transcriptAtLastMatch).length > 0;
+}
+
+export function isUsEnglishLang(lang: string): boolean {
+  return lang.toLowerCase().replace(/_/g, "-").startsWith("en-us");
+}
+
+export function preferUsEnglishVoice<T extends { lang: string }>(
+  voices: readonly T[],
+): T | null {
+  return voices.find((voice) => isUsEnglishLang(voice.lang)) ?? null;
+}
+
+export function configureReadAlongRecognition(rec: {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  maxAlternatives: number;
+}): void {
+  rec.lang = SPEECH_LOCALE;
+  rec.continuous = true;
+  rec.interimResults = true;
+  rec.maxAlternatives = 3;
 }
 
 export function displayWord(word: string): string {
@@ -333,7 +412,9 @@ export function speakText(
 
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.rate = opts?.rate ?? 0.9;
-  utterance.lang = "en-US";
+  utterance.lang = SPEECH_LOCALE;
+  const usVoice = preferUsEnglishVoice(window.speechSynthesis.getVoices());
+  if (usVoice) utterance.voice = usVoice;
 
   const onDone = () => {
     if (gen !== speakGeneration) return;

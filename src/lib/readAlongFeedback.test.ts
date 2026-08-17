@@ -1,9 +1,20 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  DEFAULT_IDLE_PAUSE_SEC,
+  IDLE_PAUSE_MAX_SEC,
+  IDLE_PAUSE_MIN_SEC,
   IDLE_PAUSE_MS,
+  IDLE_PAUSE_PRESETS_SEC,
+  IDLE_PAUSE_STORAGE_KEY,
   backupWordState,
+  clampIdlePauseSec,
+  idlePauseMessage,
+  idlePauseMs,
+  loadIdlePauseSec,
+  parseIdlePauseSec,
   previousReadableIndex,
+  saveIdlePauseSec,
   shouldIdlePause,
   visibleWordResult,
   latestWordMarks,
@@ -72,6 +83,69 @@ describe("shouldIdlePause", () => {
       }),
       false,
     );
+  });
+
+  it("uses a custom inactivity window when provided", () => {
+    assert.equal(
+      shouldIdlePause({
+        listening: true,
+        lastActivityAt: 1000,
+        now: 1000 + 10_000,
+        idleMs: 10_000,
+      }),
+      false,
+    );
+    assert.equal(
+      shouldIdlePause({
+        listening: true,
+        lastActivityAt: 1000,
+        now: 1000 + 10_001,
+        idleMs: 10_000,
+      }),
+      true,
+    );
+  });
+});
+
+describe("idle pause timer settings", () => {
+  it("defaults to 6 seconds and offers 5/10/15/30 presets", () => {
+    assert.equal(DEFAULT_IDLE_PAUSE_SEC, 6);
+    assert.equal(IDLE_PAUSE_MS, 6000);
+    assert.deepEqual([...IDLE_PAUSE_PRESETS_SEC], [5, 10, 15, 30]);
+  });
+
+  it("clamps custom seconds between 3 and 120", () => {
+    assert.equal(clampIdlePauseSec(2), IDLE_PAUSE_MIN_SEC);
+    assert.equal(clampIdlePauseSec(121), IDLE_PAUSE_MAX_SEC);
+    assert.equal(clampIdlePauseSec(7.4), 7);
+  });
+
+  it("parses stored values and falls back to 6 seconds", () => {
+    assert.equal(parseIdlePauseSec("15"), 15);
+    assert.equal(parseIdlePauseSec("nope"), DEFAULT_IDLE_PAUSE_SEC);
+    assert.equal(parseIdlePauseSec(null), DEFAULT_IDLE_PAUSE_SEC);
+  });
+
+  it("persists the chosen timer in localStorage", () => {
+    const store = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        store.set(key, value);
+      },
+    };
+    assert.equal(loadIdlePauseSec(storage), DEFAULT_IDLE_PAUSE_SEC);
+    assert.equal(saveIdlePauseSec(30, storage), 30);
+    assert.equal(store.get(IDLE_PAUSE_STORAGE_KEY), "30");
+    assert.equal(loadIdlePauseSec(storage), 30);
+  });
+
+  it("describes the pause using the chosen number of seconds", () => {
+    assert.equal(
+      idlePauseMessage(10),
+      "Paused — no reading for 10 seconds",
+    );
+    assert.equal(idlePauseMs(5), 5000);
   });
 });
 
