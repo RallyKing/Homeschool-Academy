@@ -3,42 +3,16 @@
 import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { action } from "../_generated/server";
-import { mockVocabExplain } from "./mocks";
-import { chatCompletion, keywordFilter } from "./provider";
+import { api } from "../_generated/api";
+import { DEFINITION_UNAVAILABLE } from "../lib/dictionaryCore";
 import {
   ageBandValidator,
   providerValidator,
-  type AgeBand,
 } from "./types";
 
-function parseVocabJson(
-  content: string,
-): { definition: string; example: string } | null {
-  try {
-    const start = content.indexOf("{");
-    const end = content.lastIndexOf("}");
-    if (start < 0 || end <= start) return null;
-    const parsed = JSON.parse(content.slice(start, end + 1)) as {
-      definition?: unknown;
-      example?: unknown;
-    };
-    if (
-      typeof parsed.definition !== "string" ||
-      typeof parsed.example !== "string"
-    ) {
-      return null;
-    }
-    const definition = parsed.definition.trim();
-    const example = parsed.example.trim();
-    if (!definition || !example) return null;
-    return { definition, example };
-  } catch {
-    return null;
-  }
-}
-
 /**
- * Capability: vocab_explain — one-word, age-fit definition for read-along.
+ * Capability: vocab_explain — dictionary definition for one read-along word.
+ * Looks up Merriam-Webster when a key is set, otherwise dictionaryapi.dev.
  */
 export const explain = action({
   args: {
@@ -66,49 +40,16 @@ export const explain = action({
     const word = args.word.trim();
     if (!word) throw new Error("Word is required");
 
-    const ageBand: AgeBand = args.ageBand ?? "elementary";
-    const guard =
-      args.parentGuardrailContext?.trim() ||
-      "Age-appropriate vocabulary only. No adult themes.";
-    const { filteredTopics, blocked } = keywordFilter(word, guard);
-    if (blocked) {
-      return {
-        word,
-        definition:
-          "That word is outside your family's reading guidelines. Pick another word from the story.",
-        example: "Ask a parent if you want a different explanation.",
-        provider: "mock",
-        reason: `Blocked: ${filteredTopics.join(", ")}`,
-      };
-    }
-
-    const mock = mockVocabExplain({ word, ageBand });
-    let definition = mock.definition;
-    let example = mock.example;
-    let provider: "mock" | "openai" | "gateway" = "mock";
-    let reason =
-      "Vocab mock (set OPENAI_API_KEY or AI_GATEWAY_API_KEY for live LLM)";
-
-    const llm = await chatCompletion({
-      system: `You explain ONE English word for a homeschool read-along.
-Return ONLY JSON: {"definition":"...","example":"..."}
-Age band: ${ageBand}.
-Parent guardrails: ${guard}
-Rules: one or two short sentences; kid-safe; no slang that needs adult themes; no medical claims.`,
-      user: `Explain: ${word}`,
-      temperature: 0.3,
-    });
-
-    if (llm) {
-      const parsed = parseVocabJson(llm.content);
-      if (parsed) {
-        definition = parsed.definition;
-        example = parsed.example;
-        provider = llm.provider;
-        reason = "Age-banded LLM definition";
-      }
-    }
-
-    return { word, definition, example, provider, reason };
+    const looked = await ctx.runAction(api.dictionary.lookup, { word });
+    const unavailable = looked.source === "unavailable" || !looked.definition;
+    return {
+      word: looked.word || word,
+      definition: looked.definition ?? DEFINITION_UNAVAILABLE,
+      example: looked.example ?? "",
+      provider: "mock",
+      reason: unavailable
+        ? DEFINITION_UNAVAILABLE
+        : `Dictionary (${looked.source})`,
+    };
   },
 });

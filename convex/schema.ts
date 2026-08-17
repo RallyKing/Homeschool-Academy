@@ -912,4 +912,18 @@ export default defineSchema({
   })
     .index("by_session", ["sessionId"])
     .index("by_session_and_wordIndex", ["sessionId", "wordIndex"]),
+
+  dictionaryEntries: defineTable({
+    word: v.string(),
+    definition: v.string(),
+    partOfSpeech: v.optional(v.string()),
+    example: v.optional(v.string()),
+    source: v.union(
+      v.literal("merriam-webster"),
+      v.literal("dictionaryapi.dev"),
+      v.literal("manual"),
+    ),
+    createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
+  }).index("by_word", ["word"]),
 });

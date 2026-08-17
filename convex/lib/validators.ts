@@ -332,3 +332,21 @@ export const readAlongWordEventDocValidator = v.object({
   result: readAlongWordResultValidator,
   createdAt: v.number(),
 });
+
+export const dictionarySourceValidator = v.union(
+  v.literal("merriam-webster"),
+  v.literal("dictionaryapi.dev"),
+  v.literal("manual"),
+);
+
+export const dictionaryEntryDocValidator = v.object({
+  _id: v.id("dictionaryEntries"),
+  _creationTime: v.number(),
+  word: v.string(),
+  definition: v.string(),
+  partOfSpeech: v.optional(v.string()),
+  example: v.optional(v.string()),
+  source: dictionarySourceValidator,
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+});

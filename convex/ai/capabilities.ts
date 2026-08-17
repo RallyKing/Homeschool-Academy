@@ -68,8 +68,8 @@ export const CAPABILITY_REGISTRY: Array<{
   {
     id: "vocab_explain",
     description:
-      "Simple, age-fit definition for one word in a read-along story.",
-    inputSummary: "word + ageBand + optional parentGuardrailContext",
+      "Real dictionary definition for one word in a read-along story.",
+    inputSummary: "word",
     outputSummary: "word, definition, example, provider",
   },
 ];

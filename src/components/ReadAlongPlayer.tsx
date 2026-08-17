@@ -45,6 +45,7 @@ import {
   ttsSupported,
   type MicIntent,
 } from "@/lib/readAlongSpeech";
+import { DEFINITION_UNAVAILABLE } from "../../convex/lib/dictionaryCore";
 
 type WordEvent = {
   wordIndex: number;
@@ -58,7 +59,6 @@ const MISS_GRACE_MS = 2500;
 
 export function ReadAlongPlayer({
   sessionId,
-  parentGuardrailContext,
   onExit,
   onFinished,
 }: {
@@ -80,7 +80,7 @@ export function ReadAlongPlayer({
   const recordPracticeWord = useMutation(api.readAlong.recordPracticeWord);
   const finishSession = useMutation(api.readAlong.finishSession);
   const createLog = useMutation(api.logs.create);
-  const explainVocab = useAction(api.ai.vocabExplain.explain);
+  const lookupDefinition = useAction(api.dictionary.lookup);
 
   const [index, setIndex] = useState(0);
   const [misses, setMisses] = useState(0);
@@ -95,6 +95,7 @@ export function ReadAlongPlayer({
   const [vocabWord, setVocabWord] = useState("");
   const [vocabDef, setVocabDef] = useState("");
   const [vocabExample, setVocabExample] = useState("");
+  const [vocabPos, setVocabPos] = useState("");
   const [vocabBusy, setVocabBusy] = useState(false);
   const [vocabHighlight, setVocabHighlight] = useState(-1);
   const [practiceIndex, setPracticeIndex] = useState(0);
@@ -120,9 +121,9 @@ export function ReadAlongPlayer({
   const transcriptAtLastMatchRef = useRef("");
   const lastTranscriptRef = useRef("");
   const syncedRef = useRef(false);
-  const vocabCache = useRef<Map<string, { definition: string; example: string }>>(
-    new Map(),
-  );
+  const vocabCache = useRef<
+    Map<string, { definition: string; example: string; partOfSpeech: string }>
+  >(new Map());
   const currentWordElRef = useRef<HTMLButtonElement | null>(null);
   const graceTimerRef = useRef<number | null>(null);
   const flushTimerRef = useRef<number | null>(null);
@@ -614,25 +615,32 @@ export function ReadAlongPlayer({
     if (cached) {
       setVocabDef(cached.definition);
       setVocabExample(cached.example);
+      setVocabPos(cached.partOfSpeech);
       return;
     }
     setVocabBusy(true);
     setVocabDef("");
     setVocabExample("");
+    setVocabPos("");
     try {
-      const result = await explainVocab({
-        word: clean,
-        ageBand: story?.ageBand,
-        parentGuardrailContext,
-      });
-      vocabCache.current.set(clean.toLowerCase(), {
-        definition: result.definition,
-        example: result.example,
-      });
-      setVocabDef(result.definition);
-      setVocabExample(result.example);
-    } catch (err) {
-      setVocabDef(err instanceof Error ? err.message : "Could not load definition.");
+      const result = await lookupDefinition({ word: clean });
+      const definition = result.definition ?? DEFINITION_UNAVAILABLE;
+      const example = result.example ?? "";
+      const partOfSpeech = result.partOfSpeech ?? "";
+      if (result.definition) {
+        vocabCache.current.set(clean.toLowerCase(), {
+          definition,
+          example,
+          partOfSpeech,
+        });
+      }
+      setVocabDef(definition);
+      setVocabExample(example);
+      setVocabPos(partOfSpeech);
+    } catch {
+      setVocabDef(DEFINITION_UNAVAILABLE);
+      setVocabExample("");
+      setVocabPos("");
     } finally {
       setVocabBusy(false);
     }
@@ -1033,7 +1041,7 @@ export function ReadAlongPlayer({
           setVocabHighlight(-1);
         }}
         title={vocabWord || "Word"}
-        description="Age-fit meaning. Hear it with highlighting."
+        description="Dictionary definition."
         size="md"
         className="flex max-h-[min(90dvh,42rem)] min-w-0 flex-col overflow-hidden"
         bodyClassName="max-h-[min(52vh,24rem)]"
@@ -1043,7 +1051,7 @@ export function ReadAlongPlayer({
             <Button
               variant="secondary"
               onClick={speakVocab}
-              disabled={!ttsOk || !vocabDef}
+              disabled={!ttsOk || !vocabDef || vocabDef === DEFINITION_UNAVAILABLE}
             >
               Read To Me
             </Button>
@@ -1064,7 +1072,12 @@ export function ReadAlongPlayer({
           <p className="text-sm text-[var(--muted)]">Looking up…</p>
         ) : (
           <div className="read-along-vocab min-w-0 space-y-3">
-            <p className="read-along-vocab-text text-base leading-relaxed">
+            {vocabPos ? (
+              <p className="text-xs font-medium uppercase tracking-wide text-[var(--muted)]">
+                {vocabPos}
+              </p>
+            ) : null}
+            <p className="read-along-vocab-text text-base leading-relaxed text-[var(--foreground)]">
               {vocabDefWords.map((w, i) => (
                 <span
                   key={`def-${w}-${i}`}
