@@ -505,6 +505,7 @@ export default defineSchema({
       v.literal("badge"),
       v.literal("bonus"),
       v.literal("social"),
+      v.literal("read_along"),
     ),
     sourceId: v.string(),
     xp: v.number(),
@@ -822,4 +823,93 @@ export default defineSchema({
     .index("by_family", ["familyId"])
     .index("by_teacher_and_course", ["teacherUserId", "courseId"])
     .index("by_family_and_teacher", ["familyId", "teacherUserId"]),
+
+  // ── Read-along ────────────────────────────────────────────────
+  readAlongRecipes: defineTable({
+    familyId: v.id("families"),
+    title: v.string(),
+    gradeLevel: v.string(),
+    theme: v.string(),
+    moralLessons: v.array(v.string()),
+    length: v.union(
+      v.literal("short"),
+      v.literal("medium"),
+      v.literal("long"),
+    ),
+    aiPrompt: v.string(),
+    active: v.boolean(),
+    createdBy: v.id("users"),
+    createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
+  })
+    .index("by_family", ["familyId"])
+    .index("by_family_and_active", ["familyId", "active"]),
+
+  readAlongStories: defineTable({
+    familyId: v.id("families"),
+    studentId: v.optional(v.id("students")),
+    title: v.string(),
+    body: v.string(),
+    words: v.array(v.string()),
+    wordCount: v.number(),
+    ageBand: v.optional(
+      v.union(
+        v.literal("early_elementary"),
+        v.literal("elementary"),
+        v.literal("middle"),
+        v.literal("teen"),
+        v.literal("mixed"),
+      ),
+    ),
+    subject: v.optional(v.string()),
+    recipeId: v.optional(v.id("readAlongRecipes")),
+    createdBy: v.id("users"),
+    createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
+  })
+    .index("by_family", ["familyId"])
+    .index("by_student", ["studentId"])
+    .index("by_family_and_createdAt", ["familyId", "createdAt"]),
+
+  readAlongSessions: defineTable({
+    storyId: v.id("readAlongStories"),
+    studentId: v.id("students"),
+    familyId: v.id("families"),
+    status: v.union(
+      v.literal("in_progress"),
+      v.literal("practice"),
+      v.literal("completed"),
+    ),
+    startedAt: v.number(),
+    endedAt: v.optional(v.number()),
+    durationMs: v.optional(v.number()),
+    currentWordIndex: v.number(),
+    wordsCorrect: v.number(),
+    wordsMissed: v.number(),
+    pointsAwarded: v.number(),
+    needsHelpWords: v.array(v.string()),
+    practicedWords: v.optional(v.array(v.string())),
+    logId: v.optional(v.id("logs")),
+    createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
+  })
+    .index("by_story", ["storyId"])
+    .index("by_student", ["studentId"])
+    .index("by_student_and_status", ["studentId", "status"])
+    .index("by_family", ["familyId"])
+    .index("by_family_and_createdAt", ["familyId", "createdAt"]),
+
+  readAlongWordEvents: defineTable({
+    sessionId: v.id("readAlongSessions"),
+    wordIndex: v.number(),
+    word: v.string(),
+    result: v.union(
+      v.literal("correct"),
+      v.literal("retry_ok"),
+      v.literal("helped"),
+    ),
+    createdAt: v.number(),
+  })
+    .index("by_session", ["sessionId"])
+    .index("by_session_and_wordIndex", ["sessionId", "wordIndex"]),
 });

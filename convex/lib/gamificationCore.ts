@@ -81,7 +81,8 @@ export type AwardSource =
   | "quest"
   | "badge"
   | "bonus"
-  | "social";
+  | "social"
+  | "read_along";
 
 export type AwardResult = {
   xpGained: number;
@@ -500,7 +501,7 @@ export async function awardProgress(
   let level = levelFromXp(xp);
   let weeklyXp = weekly.weeklyXp;
   let weeklyPoints = weekly.weeklyPoints;
-  let weeklyStars = weekly.weeklyStars;
+  const weeklyStars = weekly.weeklyStars;
 
   await ctx.db.patch("studentGamification", profile._id, {
     xp,

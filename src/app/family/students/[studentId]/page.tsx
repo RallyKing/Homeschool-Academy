@@ -6,6 +6,7 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
 import { ParentStudentLogsPanel } from "@/components/ParentStudentLogsPanel";
+import { ReadAlongParentPanel } from "@/components/ReadAlongParentPanel";
 import { StudentAvatar } from "@/components/StudentAvatar";
 import { StudentPhotoEditor } from "@/components/StudentPhotoEditor";
 import { usePageTab } from "@/hooks/usePageTab";
@@ -33,6 +34,7 @@ const CONTROL_TABS = [
   "logs",
   "chores",
   "plan",
+  "read",
   "social",
   "rewards",
 ] as const;
@@ -277,13 +279,15 @@ function StudentControlInner({ studentId }: { studentId: Id<"students"> }) {
   useEffect(() => {
     if (!gamification?.profile || progressHydrated) return;
     const p = gamification.profile;
-    setAdjXp(String(p.xp));
-    setAdjPoints(String(p.points));
-    setAdjStars(String(p.stars));
-    setAdjStreak(String(p.currentStreak));
-    setAdjFreezes(String(p.streakFreezes));
-    setAdjWeeklyXp(String(p.weeklyXp));
-    setProgressHydrated(true);
+    queueMicrotask(() => {
+      setAdjXp(String(p.xp));
+      setAdjPoints(String(p.points));
+      setAdjStars(String(p.stars));
+      setAdjStreak(String(p.currentStreak));
+      setAdjFreezes(String(p.streakFreezes));
+      setAdjWeeklyXp(String(p.weeklyXp));
+      setProgressHydrated(true);
+    });
   }, [gamification, progressHydrated]);
 
   async function onSaveChore(e: FormEvent) {
@@ -504,6 +508,7 @@ function StudentControlInner({ studentId }: { studentId: Id<"students"> }) {
           { id: "logs", label: "Logs" },
           { id: "chores", label: "Chores" },
           { id: "plan", label: "Plan" },
+          { id: "read", label: "Read" },
           { id: "social", label: "Social" },
           { id: "rewards", label: "Rewards / Progress" },
         ]}
@@ -759,6 +764,14 @@ function StudentControlInner({ studentId }: { studentId: Id<"students"> }) {
             </ul>
           )}
         </Section>
+      </TabPanel>
+
+      <TabPanel id="read" active={tab === "read"}>
+        <ReadAlongParentPanel
+          familyId={student.familyId}
+          studentId={student._id}
+          parentGuardrailContext={family?.parentGuardrailContext}
+        />
       </TabPanel>
 
       <TabPanel id="social" active={tab === "social"}>

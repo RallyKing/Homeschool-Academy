@@ -55,6 +55,7 @@ const STUDENT_TAB_LABELS: Record<string, string> = {
   plan: "Plan",
   social: "Social",
   rewards: "Rewards",
+  read: "Read",
 };
 
 const CHORES_TAB_LABELS: Record<string, string> = {
@@ -94,6 +95,7 @@ const STUDENT_DASH_TAB_LABELS: Record<string, string> = {
   quests: "Quests",
   plan: "Plan",
   log: "Log",
+  read: "Read",
   chores: "Chores",
   cheer: "Cheer",
   profile: "Profile",
@@ -104,6 +106,7 @@ const ADMIN_TAB_LABELS: Record<string, string> = {
   subjects: "Subjects",
   orgs: "Orgs",
   users: "Users",
+  readalong: "Read-along",
 };
 
 /** Paths where breadcrumbs should not render. */
@@ -229,6 +232,14 @@ const ROUTES: RouteRule[] = [
     ],
   },
   {
+    test: exact("/family/read-along"),
+    build: (ctx) => [
+      homeCrumb(ctx.role),
+      { label: "Learn", href: "/family/courses" },
+      { label: "Read-along" },
+    ],
+  },
+  {
     test: exact("/family/chores"),
     build: (ctx) => {
       const crumbs: BreadcrumbItem[] = [
@@ -303,6 +314,10 @@ const ROUTES: RouteRule[] = [
   {
     test: exact("/student/chores"),
     build: (ctx) => [homeCrumb(ctx.role), { label: "Chores" }],
+  },
+  {
+    test: exact("/student/read-along"),
+    build: (ctx) => [homeCrumb(ctx.role), { label: "Read-along" }],
   },
   {
     test: exact("/student/social"),

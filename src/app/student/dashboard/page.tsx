@@ -41,6 +41,7 @@ const STUDENT_TABS = [
   "quests",
   "plan",
   "log",
+  "read",
   "chores",
   "cheer",
   "profile",
@@ -257,6 +258,7 @@ function StudentDashboardInner() {
           { id: "quests", label: "Quests" },
           { id: "plan", label: "Plan" },
           { id: "log", label: "Log" },
+          { id: "read", label: "Read" },
           {
             id: "chores",
             label: "Chores",
@@ -355,6 +357,11 @@ function StudentDashboardInner() {
           <Button size="sm" onClick={() => setTab("log")}>
             Log learning
           </Button>
+          <Link href={withViewAs("/student/read-along", viewAsStudentId)}>
+            <Button variant="secondary" size="sm">
+              Read-along
+            </Button>
+          </Link>
           <Button variant="secondary" size="sm" onClick={() => setTab("quests")}>
             Quests & rewards
           </Button>
@@ -544,6 +551,24 @@ function StudentDashboardInner() {
             defaultRangeDays={14}
             title=""
           />
+        </Section>
+      </TabPanel>
+
+      <TabPanel id="read" active={tab === "read"}>
+        <Section
+          title="Read-along"
+          description="Stories from parent recipes, with word highlighting, tap-to-hear, and optional microphone checking."
+          action={
+            <Link href={withViewAs("/student/read-along", viewAsStudentId)}>
+              <Button size="sm">Open Read-along</Button>
+            </Link>
+          }
+        >
+          <p className="text-sm text-[var(--muted)]">
+            Generate from a parent recipe, tap any word to hear it, and (in Chrome
+            or Edge) use the mic to check each word. Safari can tap Next instead
+            of listening.
+          </p>
         </Section>
       </TabPanel>
 

@@ -23,11 +23,12 @@ import {
   TabPanel,
 } from "@/components/ui";
 import { usePageTab } from "@/hooks/usePageTab";
+import { ReadAlongRecipePanel } from "@/components/ReadAlongRecipePanel";
 
 type SubjectCategory = "stem" | "humanities" | "life" | "applied";
 type AppRole = "superAdmin" | "parent" | "teacher" | "student";
 
-const ADMIN_TABS = ["overview", "subjects", "orgs", "users"] as const;
+const ADMIN_TABS = ["overview", "subjects", "orgs", "users", "readalong"] as const;
 
 function AdminInner() {
   const [tab, setTab] = usePageTab(ADMIN_TABS, "overview");
@@ -101,6 +102,7 @@ function AdminInner() {
   const [editAcademyId, setEditAcademyId] = useState("");
   const [academyName, setAcademyName] = useState("");
   const [academyDescription, setAcademyDescription] = useState("");
+  const [readAlongFamilyId, setReadAlongFamilyId] = useState("");
 
   function notify(text: string, tone: "info" | "error" | "success" = "info") {
     setMessage(text);
@@ -355,6 +357,7 @@ function AdminInner() {
           { id: "subjects", label: "Subjects", count: subjects?.length },
           { id: "orgs", label: "Orgs" },
           { id: "users", label: "Users", count: users?.length },
+          { id: "readalong", label: "Read-along" },
         ]}
         value={tab}
         onChange={setTab}
@@ -707,6 +710,35 @@ function AdminInner() {
             </div>
           )}
         </Section>
+      </TabPanel>
+
+      <TabPanel id="readalong" active={tab === "readalong"}>
+        <Section
+          title="Story recipes by school"
+          description="Pick a family/school, then create or edit the recipes that control generated read-along stories."
+        >
+          <div className="max-w-md">
+            <Select
+              label="School / family"
+              value={readAlongFamilyId}
+              onChange={(e) => setReadAlongFamilyId(e.target.value)}
+            >
+              <option value="">Choose…</option>
+              {(families ?? []).map((f) => (
+                <option key={f._id} value={f._id}>
+                  {f.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+        </Section>
+        {readAlongFamilyId ? (
+          <ReadAlongRecipePanel
+            familyId={readAlongFamilyId as Id<"families">}
+          />
+        ) : (
+          <EmptyState>Select a school to manage its story recipes.</EmptyState>
+        )}
       </TabPanel>
 
       <Modal

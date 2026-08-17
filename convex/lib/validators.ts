@@ -242,3 +242,93 @@ export const knowledgeBaseArticleDocValidator = v.object({
   createdAt: v.number(),
   updatedAt: v.optional(v.number()),
 });
+
+export const readAlongAgeBandValidator = v.union(
+  v.literal("early_elementary"),
+  v.literal("elementary"),
+  v.literal("middle"),
+  v.literal("teen"),
+  v.literal("mixed"),
+);
+
+export const readAlongSessionStatusValidator = v.union(
+  v.literal("in_progress"),
+  v.literal("practice"),
+  v.literal("completed"),
+);
+
+export const readAlongWordResultValidator = v.union(
+  v.literal("correct"),
+  v.literal("retry_ok"),
+  v.literal("helped"),
+);
+
+export const readAlongLengthValidator = v.union(
+  v.literal("short"),
+  v.literal("medium"),
+  v.literal("long"),
+);
+
+export const readAlongRecipeDocValidator = v.object({
+  _id: v.id("readAlongRecipes"),
+  _creationTime: v.number(),
+  familyId: v.id("families"),
+  title: v.string(),
+  gradeLevel: v.string(),
+  theme: v.string(),
+  moralLessons: v.array(v.string()),
+  length: readAlongLengthValidator,
+  aiPrompt: v.string(),
+  active: v.boolean(),
+  createdBy: v.id("users"),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+});
+
+export const readAlongStoryDocValidator = v.object({
+  _id: v.id("readAlongStories"),
+  _creationTime: v.number(),
+  familyId: v.id("families"),
+  studentId: v.optional(v.id("students")),
+  title: v.string(),
+  body: v.string(),
+  words: v.array(v.string()),
+  wordCount: v.number(),
+  ageBand: v.optional(readAlongAgeBandValidator),
+  subject: v.optional(v.string()),
+  recipeId: v.optional(v.id("readAlongRecipes")),
+  createdBy: v.id("users"),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+});
+
+export const readAlongSessionDocValidator = v.object({
+  _id: v.id("readAlongSessions"),
+  _creationTime: v.number(),
+  storyId: v.id("readAlongStories"),
+  studentId: v.id("students"),
+  familyId: v.id("families"),
+  status: readAlongSessionStatusValidator,
+  startedAt: v.number(),
+  endedAt: v.optional(v.number()),
+  durationMs: v.optional(v.number()),
+  currentWordIndex: v.number(),
+  wordsCorrect: v.number(),
+  wordsMissed: v.number(),
+  pointsAwarded: v.number(),
+  needsHelpWords: v.array(v.string()),
+  practicedWords: v.optional(v.array(v.string())),
+  logId: v.optional(v.id("logs")),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
+});
+
+export const readAlongWordEventDocValidator = v.object({
+  _id: v.id("readAlongWordEvents"),
+  _creationTime: v.number(),
+  sessionId: v.id("readAlongSessions"),
+  wordIndex: v.number(),
+  word: v.string(),
+  result: readAlongWordResultValidator,
+  createdAt: v.number(),
+});

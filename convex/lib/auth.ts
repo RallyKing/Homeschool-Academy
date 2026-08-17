@@ -13,6 +13,10 @@ import {
   deleteContactsForFamily,
   deleteContactsForStudent,
 } from "./contacts";
+import {
+  deleteReadAlongForFamily,
+  deleteReadAlongForStudent,
+} from "./readAlongCore";
 
 type Ctx = QueryCtx | MutationCtx;
 
@@ -532,6 +536,7 @@ export async function deleteStudentData(
   await deleteGamificationForStudent(ctx, studentId);
   await deleteSocialForStudent(ctx, studentId);
   await deleteBadgeProposalsForStudent(ctx, studentId);
+  await deleteReadAlongForStudent(ctx, studentId);
 
   const student = await ctx.db.get("students", studentId);
   if (student) {
@@ -609,6 +614,7 @@ export async function deleteFamilyCascade(
   await deleteAlertsForFamily(ctx, familyId);
   await deleteRewardsForFamily(ctx, familyId);
   await deleteFeedForFamily(ctx, familyId);
+  await deleteReadAlongForFamily(ctx, familyId);
 
   const courses = await ctx.db
     .query("courses")

@@ -179,6 +179,33 @@ const FEATURE_SEEDS: FeatureSeed[] = [
     slug: "whats-new-and-knowledge-base",
     category: "Platform",
   },
+  {
+    title: "Read-along stories",
+    summary:
+      "Students read generated stories with word highlighting, click-to-hear, microphone checking, vocabulary, and a practice round for missed words.",
+    body: `Read-along is a student activity parents control with **story recipes**.
+
+**Where to go**
+- Parents: Learn → Read-along (\`/family/read-along\`), Story recipes tab — or a student’s Read tab
+- Students: Today → Read, or \`/student/read-along\`
+- SuperAdmin: Admin → Read-along (pick a school)
+
+**Story recipes**
+Parents fill a form: title, grade level, theme, moral lessons, length, and the **AI prompt** that generates stories. Students pick a recipe, then generate. No recipe, no generated story (starter recipes can be added).
+
+**How reading works**
+1. The current word highlights in teal. Tap any word to hear it (browser text-to-speech).
+2. In Chrome or Edge, the microphone checks that the child said the current word (fuzzy match). Safari can tap Next and still use tap-to-hear.
+3. A miss pauses for one retry. A second miss plays the word aloud, marks it for help, and continues.
+4. After the story, practice missed words, then finish. Time is logged as a learning session. Correct words earn small points (1 per 5 words).
+
+**Privacy**
+- Chrome/Edge speech recognition uses the browser’s speech service. Audio is not stored in Homeschool Academy.
+- Stories and session stats stay in the family.`,
+    version: "1.8.0",
+    slug: "read-along-stories",
+    category: "Learning",
+  },
 ];
 
 function buildKbBody(args: {

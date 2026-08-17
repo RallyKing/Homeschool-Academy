@@ -102,6 +102,7 @@ const navByRole: Record<string, NavEntry[]> = {
           { href: "/family/planner", label: "Planner" },
           { href: "/family/ledger", label: "Ledger" },
           { href: "/family/progress", label: "Progress" },
+          { href: "/family/read-along", label: "Read-along" },
           { href: "/family/ai", label: "AI" },
         ],
       },
@@ -131,6 +132,7 @@ const navByRole: Record<string, NavEntry[]> = {
   ],
   student: [
     { kind: "link", link: { href: "/student/dashboard", label: "Today" } },
+    { kind: "link", link: { href: "/student/read-along", label: "Read" } },
     { kind: "link", link: { href: "/student/chores", label: "Chores" } },
     {
       kind: "group",
@@ -150,6 +152,7 @@ const navByRole: Record<string, NavEntry[]> = {
 
 const viewAsEntries: NavEntry[] = [
   { kind: "link", link: { href: "/student/dashboard", label: "Today" } },
+  { kind: "link", link: { href: "/student/read-along", label: "Read" } },
   { kind: "link", link: { href: "/student/chores", label: "Chores" } },
   { kind: "link", link: { href: "/student/social", label: "Cheer" } },
   { kind: "link", link: { href: "/family/dashboard", label: "Exit preview" } },

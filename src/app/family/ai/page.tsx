@@ -212,12 +212,15 @@ function FamilyAiInner() {
 
       <PageHeader
         title="Family AI"
-        description="Narrow capabilities — guardrails, badge craft, course help, and learning insights. Mock today; flip on OPENAI_API_KEY or AI_GATEWAY_API_KEY later."
+        description="Narrow capabilities — guardrails, badge craft, course help, learning insights, and read-along stories. Mock today; flip on OPENAI_API_KEY or AI_GATEWAY_API_KEY later."
       />
 
       {capabilities && capabilities.length > 0 ? (
         <p className="text-xs text-[var(--muted)]">
-          Registry: {capabilities.map((c) => c.id).join(" · ")}
+          Registry: {capabilities.map((c) => c.id).join(" · ")} ·{" "}
+          <Link href="/family/read-along" className="text-[var(--accent)]">
+            Open read-along
+          </Link>
         </p>
       ) : null}
 

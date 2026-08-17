@@ -57,6 +57,21 @@ export const CAPABILITY_REGISTRY: Array<{
     inputSummary: "studentId + optional parentGuardrailContext",
     outputSummary: "recommendations[] tailored to one student",
   },
+  {
+    id: "read_along_story",
+    description:
+      "Generate a read-along story from a parent-authored recipe (grade, theme, morals, length, prompt).",
+    inputSummary:
+      "recipeId, studentId, optional parentGuardrailContext",
+    outputSummary: "title, body, words[], ageBand, provider",
+  },
+  {
+    id: "vocab_explain",
+    description:
+      "Simple, age-fit definition for one word in a read-along story.",
+    inputSummary: "word + ageBand + optional parentGuardrailContext",
+    outputSummary: "word, definition, example, provider",
+  },
 ];
 
 export const listCapabilities = query({

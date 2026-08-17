@@ -202,3 +202,32 @@ export const getFamilyOptimizeContext = query({
     };
   },
 });
+
+export const getReadAlongContext = query({
+  args: {
+    studentId: v.id("students"),
+    referenceYear: v.number(),
+  },
+  returns: v.object({
+    studentId: v.id("students"),
+    familyId: v.id("families"),
+    displayName: v.string(),
+    birthYear: v.optional(v.number()),
+    academicLevel: v.optional(v.string()),
+    ageBand: ageBandValidator,
+    parentGuardrailContext: v.optional(v.string()),
+  }),
+  handler: async (ctx, args) => {
+    const { student } = await requireStudentFamilyAccess(ctx, args.studentId);
+    const family = await ctx.db.get("families", student.familyId);
+    return {
+      studentId: student._id,
+      familyId: student.familyId,
+      displayName: student.displayName,
+      birthYear: student.birthYear,
+      academicLevel: student.academicLevel,
+      ageBand: ageBandFromBirthYear(student.birthYear, args.referenceYear),
+      parentGuardrailContext: family?.parentGuardrailContext,
+    };
+  },
+});

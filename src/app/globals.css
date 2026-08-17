@@ -775,3 +775,49 @@ html {
   }
 }
 
+/* Read-along word highlighting */
+.read-along-page {
+  min-height: 12rem;
+}
+
+.read-along-text {
+  font-size: 1.45rem;
+  line-height: 2.15;
+  font-weight: 550;
+  letter-spacing: 0.01em;
+}
+
+@media (min-width: 640px) {
+  .read-along-text {
+    font-size: 1.7rem;
+    line-height: 2.25;
+  }
+}
+
+.read-along-word {
+  display: inline;
+  margin: 0 0.12em 0.15em;
+  padding: 0.08em 0.18em;
+  border-radius: 0.35rem;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  vertical-align: baseline;
+}
+
+.read-along-word:hover {
+  background: var(--accent-soft);
+}
+
+.read-along-word-current {
+  background: color-mix(in srgb, #14b8a6 42%, transparent);
+  color: var(--foreground);
+  box-shadow: 0 0 0 2px color-mix(in srgb, #14b8a6 55%, transparent);
+}
+
+.read-along-word-helped {
+  background: color-mix(in srgb, var(--warning, #b45309) 22%, transparent);
+}
+

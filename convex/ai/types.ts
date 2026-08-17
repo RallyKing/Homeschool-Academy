@@ -7,6 +7,8 @@ export const capabilityIdValidator = v.union(
   v.literal("course_assist"),
   v.literal("family_optimize"),
   v.literal("child_personalize"),
+  v.literal("read_along_story"),
+  v.literal("vocab_explain"),
 );
 
 export type CapabilityId =
@@ -14,7 +16,9 @@ export type CapabilityId =
   | "badge_craft"
   | "course_assist"
   | "family_optimize"
-  | "child_personalize";
+  | "child_personalize"
+  | "read_along_story"
+  | "vocab_explain";
 
 export const providerValidator = v.union(
   v.literal("mock"),
