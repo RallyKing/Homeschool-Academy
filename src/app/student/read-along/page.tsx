@@ -207,12 +207,12 @@ function StudentReadAlongInner() {
 
       <Section
         title="New story"
-        description="Pick a recipe your parent set up (grade, theme, moral, and prompt). Family reading guidelines still apply."
+        description="Pick a recipe your parent set up (grade, theme, morals, and length). Family reading guidelines still apply."
       >
         {recipes && recipes.length === 0 ? (
           <EmptyState>
             Ask a parent to add a story recipe first — grade level, theme, moral
-            lessons, length, and the AI prompt.
+            lessons, and length.
           </EmptyState>
         ) : (
           <form onSubmit={(e) => void onGenerate(e)} className="space-y-4 max-w-xl">

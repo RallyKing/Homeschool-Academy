@@ -1,9 +1,14 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Doc, Id } from "../../convex/_generated/dataModel";
+import {
+  buildReadAlongRecipePrompt,
+  parseMoralLessons,
+  recipeTitleFromFields,
+} from "../../convex/lib/readAlongPrompt";
 import {
   Badge,
   Button,
@@ -25,7 +30,7 @@ const emptyForm = {
   theme: "",
   moralLessons: "",
   length: "medium" as "short" | "medium" | "long",
-  aiPrompt: "",
+  customPrompt: "",
   active: true,
 };
 
@@ -42,9 +47,26 @@ export function ReadAlongRecipePanel({
 
   const [form, setForm] = useState(emptyForm);
   const [editId, setEditId] = useState<Id<"readAlongRecipes"> | null>(null);
+  const [customize, setCustomize] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [tone, setTone] = useState<"info" | "error" | "success">("info");
+
+  const moralLessons = useMemo(
+    () => parseMoralLessons(form.moralLessons),
+    [form.moralLessons],
+  );
+  const generatedPrompt = useMemo(
+    () =>
+      buildReadAlongRecipePrompt({
+        title: recipeTitleFromFields(form.title, form.theme),
+        gradeLevel: form.gradeLevel,
+        theme: form.theme,
+        moralLessons,
+        length: form.length,
+      }),
+    [form.title, form.gradeLevel, form.theme, form.length, moralLessons],
+  );
 
   function notify(text: string, next: "info" | "error" | "success" = "success") {
     setMessage(text);
@@ -52,20 +74,30 @@ export function ReadAlongRecipePanel({
   }
 
   function fillForm(recipe: Doc<"readAlongRecipes">) {
+    const autoPrompt = buildReadAlongRecipePrompt({
+      title: recipe.title,
+      gradeLevel: recipe.gradeLevel,
+      theme: recipe.theme,
+      moralLessons: recipe.moralLessons,
+      length: recipe.length,
+    });
+    const isCustom = recipe.aiPrompt.trim() !== autoPrompt.trim();
     setEditId(recipe._id);
+    setCustomize(isCustom);
     setForm({
       title: recipe.title,
       gradeLevel: recipe.gradeLevel,
       theme: recipe.theme,
       moralLessons: recipe.moralLessons.join("\n"),
       length: recipe.length,
-      aiPrompt: recipe.aiPrompt,
+      customPrompt: isCustom ? recipe.aiPrompt : "",
       active: recipe.active,
     });
   }
 
   function resetForm() {
     setEditId(null);
+    setCustomize(false);
     setForm(emptyForm);
   }
 
@@ -73,32 +105,27 @@ export function ReadAlongRecipePanel({
     e.preventDefault();
     setBusy(true);
     try {
-      const moralLessons = form.moralLessons
-        .split(/[\n,;]+/)
-        .map((s) => s.trim())
-        .filter(Boolean);
+      const lessons = parseMoralLessons(form.moralLessons);
+      const customPrompt = customize ? form.customPrompt.trim() : "";
+      const payload = {
+        title: form.title,
+        gradeLevel: form.gradeLevel,
+        theme: form.theme,
+        moralLessons: lessons,
+        length: form.length,
+        active: form.active,
+        ...(customPrompt ? { aiPrompt: customPrompt } : { aiPrompt: "" }),
+      };
       if (editId) {
         await updateRecipe({
           recipeId: editId,
-          title: form.title,
-          gradeLevel: form.gradeLevel,
-          theme: form.theme,
-          moralLessons,
-          length: form.length,
-          aiPrompt: form.aiPrompt,
-          active: form.active,
+          ...payload,
         });
         notify("Recipe updated.");
       } else {
         await createRecipe({
           familyId,
-          title: form.title,
-          gradeLevel: form.gradeLevel,
-          theme: form.theme,
-          moralLessons,
-          length: form.length,
-          aiPrompt: form.aiPrompt,
-          active: form.active,
+          ...payload,
         });
         notify("Recipe saved — students can generate stories from it.");
       }
@@ -116,15 +143,15 @@ export function ReadAlongRecipePanel({
 
       <Section
         title={editId ? "Edit story recipe" : "New story recipe"}
-        description="This form is the blueprint for generated stories: grade, theme, moral lessons, length, and the AI prompt."
+        description="Fill grade, theme, moral lessons, and length. The AI prompt is generated from those fields."
       >
         <form onSubmit={(e) => void onSave(e)} className="space-y-4 max-w-2xl">
           <Input
             label="Recipe title"
+            hint="Optional — leave blank to use the theme."
             value={form.title}
             onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
             placeholder="Kindness at home"
-            required
           />
           <div className="grid gap-4 sm:grid-cols-2">
             <Select
@@ -174,16 +201,72 @@ export function ReadAlongRecipePanel({
             placeholder={"Notice who needs help\nChoose a kind action"}
             required
           />
-          <Textarea
-            label="AI prompt (required — sent to the generator)"
-            rows={6}
-            value={form.aiPrompt}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, aiPrompt: e.target.value }))
-            }
-            placeholder="Write a gentle read-aloud about…"
-            required
-          />
+          <div>
+            <p className="text-sm font-medium text-[var(--muted)]">
+              Generated AI prompt
+            </p>
+            <p className="mt-1.5 whitespace-pre-wrap rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-2)] px-3.5 py-2.5 text-sm text-[var(--foreground)]">
+              {form.theme.trim() && moralLessons.length > 0
+                ? generatedPrompt
+                : "Add a theme and at least one moral lesson to preview the prompt."}
+            </p>
+            {customize ? (
+              <p className="mt-1 text-xs text-[var(--muted-fg)]">
+                Custom prompt will be sent instead.{" "}
+                <button
+                  type="button"
+                  className="font-medium text-[var(--accent)] hover:underline"
+                  onClick={() => {
+                    setCustomize(false);
+                    setForm((f) => ({ ...f, customPrompt: "" }));
+                  }}
+                >
+                  Use generated prompt
+                </button>
+              </p>
+            ) : (
+              <p className="mt-1 text-xs text-[var(--muted-fg)]">
+                Updates as you type. Saved with the recipe for the story
+                generator.
+              </p>
+            )}
+          </div>
+          <details
+            className="text-sm"
+            open={customize}
+            onToggle={(e) => {
+              const open = e.currentTarget.open;
+              setCustomize(open);
+              if (!open) {
+                setForm((f) => ({ ...f, customPrompt: "" }));
+              }
+            }}
+          >
+            <summary className="hover-fade cursor-pointer font-medium text-[var(--muted)]">
+              Customize prompt (advanced)
+            </summary>
+            <div className="mt-2 space-y-2">
+              <Textarea
+                label="Custom AI prompt"
+                rows={6}
+                value={form.customPrompt}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, customPrompt: e.target.value }))
+                }
+                placeholder={generatedPrompt}
+              />
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() =>
+                  setForm((f) => ({ ...f, customPrompt: generatedPrompt }))
+                }
+              >
+                Regenerate from fields
+              </Button>
+            </div>
+          </details>
           <label className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"

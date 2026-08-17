@@ -194,7 +194,7 @@ export function ReadAlongParentPanel({
       <TabPanel id="stories" active={panelTab === "stories"}>
       <Section
         title="Generate a story"
-        description="Students pick a recipe, then generate. The recipe’s prompt, grade, theme, morals, and length control what the AI writes."
+        description="Students pick a recipe, then generate. Grade, theme, morals, and length (plus the generated prompt) control what the AI writes."
       >
         <form onSubmit={(e) => void onGenerate(e)} className="space-y-4 max-w-xl">
           {!studentId ? (

@@ -12,33 +12,16 @@ import {
   readAlongLengthValidator,
   readAlongRecipeDocValidator,
 } from "./lib/validators";
+import {
+  buildReadAlongRecipePrompt,
+  parseMoralLessons,
+  recipeTitleFromFields,
+  resolveReadAlongRecipePrompt,
+} from "./lib/readAlongPrompt";
+
+export { parseMoralLessons, lengthTargets } from "./lib/readAlongPrompt";
 
 const RECIPE_LIST_LIMIT = 80;
-
-export function parseMoralLessons(raw: string[] | string): string[] {
-  const parts = Array.isArray(raw) ? raw : raw.split(/[\n,;]+/);
-  const out: string[] = [];
-  const seen = new Set<string>();
-  for (const part of parts) {
-    const lesson = part.trim();
-    if (!lesson) continue;
-    const key = lesson.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(lesson.slice(0, 160));
-    if (out.length >= 12) break;
-  }
-  return out;
-}
-
-export function lengthTargets(length: "short" | "medium" | "long"): {
-  words: string;
-  minutes: number;
-} {
-  if (length === "short") return { words: "60–90", minutes: 3 };
-  if (length === "long") return { words: "200–280", minutes: 10 };
-  return { words: "120–180", minutes: 6 };
-}
 
 const DEFAULT_RECIPES: Array<{
   title: string;
@@ -46,7 +29,6 @@ const DEFAULT_RECIPES: Array<{
   theme: string;
   moralLessons: string[];
   length: "short" | "medium" | "long";
-  aiPrompt: string;
 }> = [
   {
     title: "Kindness at home",
@@ -54,8 +36,6 @@ const DEFAULT_RECIPES: Array<{
     theme: "Everyday kindness",
     moralLessons: ["Notice who needs help", "Choose a kind action"],
     length: "short",
-    aiPrompt:
-      "Write a gentle read-aloud about a child who notices someone at home who needs help and chooses one kind, concrete action. Use short sentences and common words. End with the kind choice, not a lecture.",
   },
   {
     title: "Stick with a hard problem",
@@ -63,8 +43,6 @@ const DEFAULT_RECIPES: Array<{
     theme: "Persistence",
     moralLessons: ["Try a new approach", "Ask for help without giving up"],
     length: "medium",
-    aiPrompt:
-      "Write a realistic homeschool story about a student who gets stuck, tries a new approach, and finishes. No sibling comparisons or rankings. Keep the details specific and encouraging.",
   },
 ];
 
@@ -100,26 +78,29 @@ export const create = mutation({
     theme: v.string(),
     moralLessons: v.array(v.string()),
     length: readAlongLengthValidator,
-    aiPrompt: v.string(),
+    aiPrompt: v.optional(v.string()),
     active: v.optional(v.boolean()),
   },
   returns: v.id("readAlongRecipes"),
   handler: async (ctx, args) => {
     const { user } = await requireParentOrSchoolAdmin(ctx, args.familyId);
-    const title = args.title.trim();
     const gradeLevel = args.gradeLevel.trim();
     const theme = args.theme.trim();
-    const aiPrompt = args.aiPrompt.trim();
-    if (!title) throw new Error("Title is required");
     if (!gradeLevel) throw new Error("Grade level is required");
     if (!theme) throw new Error("Theme is required");
-    if (aiPrompt.length < 20) {
-      throw new Error("AI prompt must be at least 20 characters");
-    }
     const moralLessons = parseMoralLessons(args.moralLessons);
     if (moralLessons.length === 0) {
       throw new Error("Add at least one moral lesson");
     }
+    const title = recipeTitleFromFields(args.title, theme);
+    const aiPrompt = resolveReadAlongRecipePrompt({
+      title,
+      gradeLevel,
+      theme,
+      moralLessons,
+      length: args.length,
+      customPrompt: args.aiPrompt,
+    });
 
     return await ctx.db.insert("readAlongRecipes", {
       familyId: args.familyId,
@@ -209,11 +190,6 @@ export const update = mutation({
       updatedAt: number;
     } = { updatedAt: Date.now() };
 
-    if (args.title !== undefined) {
-      const title = args.title.trim();
-      if (!title) throw new Error("Title is required");
-      patch.title = title;
-    }
     if (args.gradeLevel !== undefined) {
       const gradeLevel = args.gradeLevel.trim();
       if (!gradeLevel) throw new Error("Grade level is required");
@@ -232,14 +208,30 @@ export const update = mutation({
       patch.moralLessons = moralLessons;
     }
     if (args.length !== undefined) patch.length = args.length;
-    if (args.aiPrompt !== undefined) {
-      const aiPrompt = args.aiPrompt.trim();
-      if (aiPrompt.length < 20) {
-        throw new Error("AI prompt must be at least 20 characters");
-      }
-      patch.aiPrompt = aiPrompt;
-    }
     if (args.active !== undefined) patch.active = args.active;
+
+    const nextTheme = patch.theme ?? recipe.theme;
+    if (args.title !== undefined) {
+      patch.title = recipeTitleFromFields(args.title, nextTheme);
+    }
+
+    const contentChanged =
+      args.title !== undefined ||
+      args.gradeLevel !== undefined ||
+      args.theme !== undefined ||
+      args.moralLessons !== undefined ||
+      args.length !== undefined;
+    const customPrompt = args.aiPrompt?.trim() ?? "";
+    if (customPrompt || contentChanged || args.aiPrompt !== undefined) {
+      patch.aiPrompt = resolveReadAlongRecipePrompt({
+        title: patch.title ?? recipe.title,
+        gradeLevel: patch.gradeLevel ?? recipe.gradeLevel,
+        theme: nextTheme,
+        moralLessons: patch.moralLessons ?? recipe.moralLessons,
+        length: patch.length ?? recipe.length,
+        customPrompt: args.aiPrompt,
+      });
+    }
 
     await ctx.db.patch("readAlongRecipes", args.recipeId, patch);
     return null;
@@ -279,7 +271,7 @@ export const ensureDefaults = mutation({
         theme: recipe.theme,
         moralLessons: recipe.moralLessons,
         length: recipe.length,
-        aiPrompt: recipe.aiPrompt,
+        aiPrompt: buildReadAlongRecipePrompt(recipe),
         active: true,
         createdBy: user._id,
         createdAt: Date.now(),

@@ -41,7 +41,7 @@ function FamilyReadAlongInner() {
       </div>
       <PageHeader
         title="Read-along"
-        description="Create story recipes (grade, theme, morals, length, AI prompt), then generate and review reading sessions. Students pick a recipe and read with highlighting, tap-to-hear, and optional microphone checking."
+        description="Create story recipes (grade, theme, morals, length — the AI prompt is generated from those fields), then generate and review reading sessions. Students pick a recipe and read with highlighting, tap-to-hear, and optional microphone checking."
       />
       <ReadAlongParentPanel
         familyId={family._id}

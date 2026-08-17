@@ -60,7 +60,7 @@ export const CAPABILITY_REGISTRY: Array<{
   {
     id: "read_along_story",
     description:
-      "Generate a read-along story from a parent-authored recipe (grade, theme, morals, length, prompt).",
+      "Generate a read-along story from a parent recipe (grade, theme, morals, length).",
     inputSummary:
       "recipeId, studentId, optional parentGuardrailContext",
     outputSummary: "title, body, words[], ageBand, provider",
