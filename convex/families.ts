@@ -6,8 +6,10 @@ import {
   getPrimaryFamilyForUser,
   requireFamilyAccess,
   requireRole,
+  requireSchoolAdmin,
 } from "./lib/auth";
-import { familyDocValidator } from "./lib/validators";
+import { upsertEntityContact } from "./lib/contacts";
+import { familyDocValidator, schoolRoleValidator } from "./lib/validators";
 
 const familyMemberDocValidator = v.object({
   _id: v.id("familyMembers"),
@@ -15,6 +17,7 @@ const familyMemberDocValidator = v.object({
   familyId: v.id("families"),
   userId: v.id("users"),
   role: v.union(v.literal("parent"), v.literal("guardian")),
+  schoolRole: v.optional(schoolRoleValidator),
   createdAt: v.number(),
 });
 
@@ -28,6 +31,7 @@ export const create = mutation({
     const familyId = await ctx.db.insert("families", {
       name: args.name.trim(),
       createdBy: user._id,
+      mainParentUserId: user._id,
       createdAt: now,
     });
 
@@ -35,12 +39,28 @@ export const create = mutation({
       familyId,
       userId: user._id,
       role: "parent",
+      schoolRole: "main",
       createdAt: now,
     });
 
     if (!user.role || user.role === "student") {
       await ctx.db.patch("users", user._id, { role: "parent" });
     }
+
+    await upsertEntityContact(ctx, {
+      kind: "school",
+      familyId,
+      displayName: args.name.trim(),
+      roleLabel: "school",
+    });
+    await upsertEntityContact(ctx, {
+      kind: "parent",
+      familyId,
+      userId: user._id,
+      displayName: user.name || user.email || "Parent",
+      emails: user.email ? [user.email] : [],
+      roleLabel: "main",
+    });
 
     return familyId;
   },
@@ -81,6 +101,14 @@ export const update = mutation({
     }
 
     await ctx.db.patch("families", args.familyId, patch);
+    if (patch.name) {
+      await upsertEntityContact(ctx, {
+        kind: "school",
+        familyId: args.familyId,
+        displayName: patch.name,
+        roleLabel: "school",
+      });
+    }
     return null;
   },
 });
@@ -198,7 +226,7 @@ export const addMember = mutation({
   },
   returns: v.id("familyMembers"),
   handler: async (ctx, args) => {
-    await requireFamilyAccess(ctx, args.familyId);
+    await requireSchoolAdmin(ctx, args.familyId);
 
     const existing = await ctx.db
       .query("familyMembers")
@@ -215,6 +243,7 @@ export const addMember = mutation({
       familyId: args.familyId,
       userId: args.userId,
       role: args.role,
+      schoolRole: "regular",
       createdAt: Date.now(),
     });
   },
@@ -228,7 +257,7 @@ export const addMemberByEmail = mutation({
   },
   returns: v.id("familyMembers"),
   handler: async (ctx, args) => {
-    await requireFamilyAccess(ctx, args.familyId);
+    await requireSchoolAdmin(ctx, args.familyId);
     const email = args.email.trim().toLowerCase();
     if (!email.includes("@")) {
       throw new Error("Enter a valid email");
@@ -264,6 +293,7 @@ export const addMemberByEmail = mutation({
       familyId: args.familyId,
       userId: target._id,
       role: args.role,
+      schoolRole: "regular",
       createdAt: Date.now(),
     });
   },
@@ -276,13 +306,13 @@ export const removeMember = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    await requireFamilyAccess(ctx, args.familyId);
+    await requireSchoolAdmin(ctx, args.familyId);
     const family = await ctx.db.get("families", args.familyId);
     if (!family) {
       throw new Error("Family not found");
     }
 
-    if (args.userId === family.createdBy) {
+    if (args.userId === family.createdBy || args.userId === family.mainParentUserId) {
       throw new Error("Cannot remove the family creator");
     }
 
@@ -316,6 +346,7 @@ export const ensureMine = mutation({
     const familyId = await ctx.db.insert("families", {
       name: args.name?.trim() || `${user.name ?? "Family"} Household`,
       createdBy: user._id,
+      mainParentUserId: user._id,
       createdAt: now,
     });
 
@@ -323,12 +354,28 @@ export const ensureMine = mutation({
       familyId,
       userId: user._id,
       role: "parent",
+      schoolRole: "main",
       createdAt: now,
     });
 
     if (!user.role) {
       await ctx.db.patch("users", user._id, { role: "parent" });
     }
+
+    await upsertEntityContact(ctx, {
+      kind: "school",
+      familyId,
+      displayName: args.name?.trim() || `${user.name ?? "Family"} Household`,
+      roleLabel: "school",
+    });
+    await upsertEntityContact(ctx, {
+      kind: "parent",
+      familyId,
+      userId: user._id,
+      displayName: user.name || user.email || "Parent",
+      emails: user.email ? [user.email] : [],
+      roleLabel: "main",
+    });
 
     return familyId;
   },

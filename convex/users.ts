@@ -56,6 +56,7 @@ export const ensureFamilyForParent = mutation({
     const familyId = await ctx.db.insert("families", {
       name: args.familyName ?? `${user.name ?? "Family"} Household`,
       createdBy: user._id,
+      mainParentUserId: user._id,
       createdAt: now,
     });
 
@@ -63,6 +64,7 @@ export const ensureFamilyForParent = mutation({
       familyId,
       userId: user._id,
       role: "parent",
+      schoolRole: "main",
       createdAt: now,
     });
 
@@ -110,8 +112,12 @@ export const onboardingStatus = query({
       homePath = "/admin";
       needsOnboarding = false;
     } else if (role === "teacher") {
-      homePath = academy ? "/academy/dashboard" : "/onboarding";
-      needsOnboarding = !academy;
+      const staff = await ctx.db
+        .query("schoolStaff")
+        .withIndex("by_user", (q) => q.eq("userId", user._id))
+        .first();
+      homePath = academy || staff ? "/academy/dashboard" : "/onboarding";
+      needsOnboarding = !academy && !staff;
     } else if (role === "student") {
       homePath = "/student/dashboard";
       needsOnboarding = false;

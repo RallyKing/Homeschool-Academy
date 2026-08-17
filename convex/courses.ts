@@ -5,11 +5,13 @@ import {
   deleteLessonsForModule,
   getCurrentUser,
   getPrimaryFamilyForUser,
+  listAssignedCourseIds,
   requireAcademyAccess,
   requireCourseWriteAccess,
   requireFamilyAccess,
   requireFamilyReadAccess,
   requireRole,
+  teacherHasCourseAccess,
 } from "./lib/auth";
 import { courseDocValidator } from "./lib/validators";
 
@@ -43,11 +45,20 @@ export const listForFamily = query({
       if (!family) return [];
       familyId = family._id;
     }
-    await requireFamilyAccess(ctx, familyId);
-    return await ctx.db
+    await requireFamilyReadAccess(ctx, familyId);
+    const courses = await ctx.db
       .query("courses")
       .withIndex("by_family", (q) => q.eq("familyId", familyId))
       .collect();
+    if (user.role === "teacher") {
+      const assigned = new Set(
+        (await listAssignedCourseIds(ctx, user._id, familyId)).map(
+          (id) => id as string,
+        ),
+      );
+      return courses.filter((c) => assigned.has(c._id));
+    }
+    return courses;
   },
 });
 
@@ -60,6 +71,24 @@ export const listForAcademy = query({
       .query("courses")
       .withIndex("by_academy", (q) => q.eq("academyId", args.academyId))
       .collect();
+  },
+});
+
+export const listAssignedToMe = query({
+  args: {},
+  returns: v.array(courseDocValidator),
+  handler: async (ctx) => {
+    const user = await getCurrentUser(ctx);
+    if (user.role === "superAdmin") {
+      return await ctx.db.query("courses").take(100);
+    }
+    const ids = await listAssignedCourseIds(ctx, user._id);
+    const courses = [];
+    for (const id of ids) {
+      const course = await ctx.db.get("courses", id);
+      if (course) courses.push(course);
+    }
+    return courses;
   },
 });
 
@@ -111,6 +140,16 @@ export const listAvailableForMyFamily = query({
       seen.add(course._id);
       combined.push(course);
     }
+
+    if (user.role === "teacher") {
+      const assigned = new Set(
+        (await listAssignedCourseIds(ctx, user._id, family._id)).map(
+          (id) => id as string,
+        ),
+      );
+      return combined.filter((c) => assigned.has(c._id));
+    }
+
     return combined;
   },
 });
@@ -135,7 +174,14 @@ export const getStructure = query({
     if (!course) return null;
 
     if (course.familyId) {
-      await requireFamilyReadAccess(ctx, course.familyId);
+      try {
+        await requireFamilyReadAccess(ctx, course.familyId);
+      } catch {
+        const user = await getCurrentUser(ctx);
+        if (!(await teacherHasCourseAccess(ctx, user._id, args.courseId))) {
+          throw new Error("Unauthorized");
+        }
+      }
     } else if (course.academyId) {
       // Subscribed families or academy members can view
       const user = await getCurrentUser(ctx);

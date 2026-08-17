@@ -8,6 +8,7 @@ import {
   getCurrentUser,
   requireSuperAdmin,
 } from "./lib/auth";
+import { deleteContactsForUser } from "./lib/contacts";
 import {
   familyDocValidator,
   roleValidator,
@@ -102,6 +103,32 @@ async function deleteUserMemberships(
   for (const student of linkedStudents) {
     await ctx.db.patch("students", student._id, { userId: undefined });
   }
+
+  const staffRows = await ctx.db
+    .query("schoolStaff")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .collect();
+  for (const row of staffRows) {
+    await ctx.db.delete("schoolStaff", row._id);
+  }
+
+  const studentAccess = await ctx.db
+    .query("teacherStudentAccess")
+    .withIndex("by_teacher", (q) => q.eq("teacherUserId", userId))
+    .collect();
+  for (const row of studentAccess) {
+    await ctx.db.delete("teacherStudentAccess", row._id);
+  }
+
+  const courseAccess = await ctx.db
+    .query("teacherCourseAccess")
+    .withIndex("by_teacher", (q) => q.eq("teacherUserId", userId))
+    .collect();
+  for (const row of courseAccess) {
+    await ctx.db.delete("teacherCourseAccess", row._id);
+  }
+
+  await deleteContactsForUser(ctx, userId);
 }
 
 export const listUsers = query({

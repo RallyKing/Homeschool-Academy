@@ -22,8 +22,10 @@ import {
   Textarea,
 } from "@/components/ui";
 import { usePageTab } from "@/hooks/usePageTab";
+import { SchoolAccountsSettings } from "@/components/SchoolAccountsSettings";
 
 const FAMILY_SETTINGS_TABS = [
+  "accounts",
   "household",
   "students",
   "subjects",
@@ -75,7 +77,7 @@ function PrefToggle({
 function FamilySettingsInner() {
   const router = useRouter();
   const { signOut } = useAuthActions();
-  const [tab, setTab] = usePageTab(FAMILY_SETTINGS_TABS, "household");
+  const [tab, setTab] = usePageTab(FAMILY_SETTINGS_TABS, "accounts");
 
   const user = useQuery(api.users.current);
   const status = useQuery(api.users.onboardingStatus);
@@ -174,6 +176,19 @@ function FamilySettingsInner() {
   }
 
   if (!family) {
+    if (user.role === "superAdmin") {
+      return (
+        <div className="page-stack">
+          <PageHeader
+            compact
+            eyebrow="School"
+            title="Settings"
+            description="Create a school with a main parent, then add accounts and contacts."
+          />
+          <SchoolAccountsSettings />
+        </div>
+      );
+    }
     return (
       <div className="page-stack">
         <PageHeader
@@ -352,7 +367,7 @@ function FamilySettingsInner() {
         compact
         eyebrow="Family"
         title="Settings"
-        description="Household, subjects, rewards, privacy, and account controls."
+          description="Household, accounts, subjects, rewards, privacy, and account controls."
       />
 
       <Message tone={messageTone}>{message}</Message>
@@ -360,6 +375,7 @@ function FamilySettingsInner() {
       <Tabs
         size="sm"
         tabs={[
+          { id: "accounts", label: "Accounts" },
           { id: "household", label: "Household" },
           {
             id: "students",
@@ -381,6 +397,10 @@ function FamilySettingsInner() {
         value={tab}
         onChange={setTab}
       />
+
+      <TabPanel id="accounts" active={tab === "accounts"}>
+        <SchoolAccountsSettings familyId={fam._id} />
+      </TabPanel>
 
       <TabPanel id="household" active={tab === "household"}>
         <Section title="Family name" description="Shown across dashboards and reports.">
@@ -1136,6 +1156,18 @@ function FamilySettingsInner() {
 
         <Section title="Help & updates">
           <div className="flex flex-wrap gap-2">
+            <Link href="/contacts">
+              <Button variant="secondary" size="sm">
+                Contacts
+              </Button>
+            </Link>
+            {user.role === "superAdmin" ? (
+              <Link href="/admin/accounts">
+                <Button variant="secondary" size="sm">
+                  Admin accounts
+                </Button>
+              </Link>
+            ) : null}
             <Link href="/updates">
               <Button variant="secondary" size="sm">
                 What&apos;s new

@@ -10,6 +10,8 @@ const isProtectedRoute = createRouteMatcher([
   "/family(.*)",
   "/academy(.*)",
   "/student(.*)",
+  "/school(.*)",
+  "/contacts(.*)",
   "/onboarding(.*)",
   "/updates(.*)",
   "/help(.*)",

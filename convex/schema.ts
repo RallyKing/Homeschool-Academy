@@ -76,6 +76,8 @@ export default defineSchema({
     name: v.string(),
     createdBy: v.id("users"),
     createdAt: v.number(),
+    /** School ≈ family tenant. Main parent who controls this school. */
+    mainParentUserId: v.optional(v.id("users")),
     /** Parent AI guardrail text used across family AI tools. */
     parentGuardrailContext: v.optional(v.string()),
     /** Platform subjects soft-hidden from this family's pickers. */
@@ -84,12 +86,17 @@ export default defineSchema({
     defaultPublicCheer: v.optional(v.boolean()),
   })
     .index("by_createdBy", ["createdBy"])
-    .index("by_name", ["name"]),
+    .index("by_name", ["name"])
+    .index("by_mainParent", ["mainParentUserId"]),
 
   familyMembers: defineTable({
     familyId: v.id("families"),
     userId: v.id("users"),
     role: familyMemberRoleValidator,
+    /** School parent rank: main controls the school; admin can add staff. */
+    schoolRole: v.optional(
+      v.union(v.literal("main"), v.literal("admin"), v.literal("regular")),
+    ),
     createdAt: v.number(),
   })
     .index("by_family", ["familyId"])
@@ -109,6 +116,9 @@ export default defineSchema({
     academyId: v.id("academies"),
     userId: v.id("users"),
     role: academyMemberRoleValidator,
+    memberKind: v.optional(
+      v.union(v.literal("teacher"), v.literal("tutor")),
+    ),
     createdAt: v.number(),
   })
     .index("by_academy", ["academyId"])
@@ -727,4 +737,89 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_family_and_user", ["familyId", "userId"]),
+
+  // ── School contacts (CRM) ────────────────────────────────
+  contacts: defineTable({
+    kind: v.union(
+      v.literal("school"),
+      v.literal("parent"),
+      v.literal("teacher"),
+      v.literal("tutor"),
+      v.literal("student"),
+      v.literal("user"),
+    ),
+    familyId: v.optional(v.id("families")),
+    userId: v.optional(v.id("users")),
+    studentId: v.optional(v.id("students")),
+    academyId: v.optional(v.id("academies")),
+    displayName: v.string(),
+    emails: v.array(v.string()),
+    phones: v.array(v.string()),
+    notes: v.optional(v.string()),
+    roleLabel: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
+  })
+    .index("by_family", ["familyId"])
+    .index("by_user", ["userId"])
+    .index("by_student", ["studentId"])
+    .index("by_kind", ["kind"])
+    .index("by_family_and_kind", ["familyId", "kind"]),
+
+  contactStudentLinks: defineTable({
+    contactId: v.id("contacts"),
+    studentId: v.id("students"),
+    familyId: v.id("families"),
+    createdAt: v.number(),
+  })
+    .index("by_contact", ["contactId"])
+    .index("by_student", ["studentId"])
+    .index("by_contact_and_student", ["contactId", "studentId"])
+    .index("by_family", ["familyId"]),
+
+  contactCourseLinks: defineTable({
+    contactId: v.id("contacts"),
+    courseId: v.id("courses"),
+    familyId: v.id("families"),
+    createdAt: v.number(),
+  })
+    .index("by_contact", ["contactId"])
+    .index("by_course", ["courseId"])
+    .index("by_contact_and_course", ["contactId", "courseId"])
+    .index("by_family", ["familyId"]),
+
+  /** Teachers/tutors attached to a school (family tenant). */
+  schoolStaff: defineTable({
+    familyId: v.id("families"),
+    userId: v.id("users"),
+    memberKind: v.union(v.literal("teacher"), v.literal("tutor")),
+    createdAt: v.number(),
+  })
+    .index("by_family", ["familyId"])
+    .index("by_user", ["userId"])
+    .index("by_family_and_user", ["familyId", "userId"]),
+
+  teacherStudentAccess: defineTable({
+    familyId: v.id("families"),
+    teacherUserId: v.id("users"),
+    studentId: v.id("students"),
+    createdAt: v.number(),
+  })
+    .index("by_teacher", ["teacherUserId"])
+    .index("by_student", ["studentId"])
+    .index("by_family", ["familyId"])
+    .index("by_teacher_and_student", ["teacherUserId", "studentId"])
+    .index("by_family_and_teacher", ["familyId", "teacherUserId"]),
+
+  teacherCourseAccess: defineTable({
+    familyId: v.id("families"),
+    teacherUserId: v.id("users"),
+    courseId: v.id("courses"),
+    createdAt: v.number(),
+  })
+    .index("by_teacher", ["teacherUserId"])
+    .index("by_course", ["courseId"])
+    .index("by_family", ["familyId"])
+    .index("by_teacher_and_course", ["teacherUserId", "courseId"])
+    .index("by_family_and_teacher", ["familyId", "teacherUserId"]),
 });

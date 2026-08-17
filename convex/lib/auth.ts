@@ -9,10 +9,28 @@ import {
 import { deleteBadgeProposalsForStudent } from "./aiCore";
 import { deleteFeedForFamily, deleteFeedForStudent } from "./feed";
 import { deleteSocialForStudent } from "./socialCore";
+import {
+  deleteContactsForFamily,
+  deleteContactsForStudent,
+} from "./contacts";
 
 type Ctx = QueryCtx | MutationCtx;
 
 export type AppRole = "superAdmin" | "parent" | "teacher" | "student";
+export type SchoolRole = "main" | "admin" | "regular";
+
+export function resolveSchoolRole(
+  membership: Doc<"familyMembers"> | null,
+  family: Doc<"families">,
+  userId: Id<"users">,
+): SchoolRole | null {
+  if (!membership) return null;
+  if (membership.schoolRole) return membership.schoolRole;
+  if (family.mainParentUserId === userId || family.createdBy === userId) {
+    return "main";
+  }
+  return "regular";
+}
 
 export async function getCurrentUser(ctx: Ctx): Promise<Doc<"users">> {
   const userId = await getAuthUserId(ctx);
@@ -92,6 +110,133 @@ export async function requireFamilyAccess(
   return { user, membership };
 }
 
+export async function getSchoolStaff(
+  ctx: Ctx,
+  familyId: Id<"families">,
+  userId: Id<"users">,
+): Promise<Doc<"schoolStaff"> | null> {
+  return await ctx.db
+    .query("schoolStaff")
+    .withIndex("by_family_and_user", (q) =>
+      q.eq("familyId", familyId).eq("userId", userId),
+    )
+    .unique();
+}
+
+export async function teacherHasStudentAccess(
+  ctx: Ctx,
+  teacherUserId: Id<"users">,
+  studentId: Id<"students">,
+): Promise<boolean> {
+  const row = await ctx.db
+    .query("teacherStudentAccess")
+    .withIndex("by_teacher_and_student", (q) =>
+      q.eq("teacherUserId", teacherUserId).eq("studentId", studentId),
+    )
+    .unique();
+  return row !== null;
+}
+
+export async function teacherHasCourseAccess(
+  ctx: Ctx,
+  teacherUserId: Id<"users">,
+  courseId: Id<"courses">,
+): Promise<boolean> {
+  const row = await ctx.db
+    .query("teacherCourseAccess")
+    .withIndex("by_teacher_and_course", (q) =>
+      q.eq("teacherUserId", teacherUserId).eq("courseId", courseId),
+    )
+    .unique();
+  return row !== null;
+}
+
+export async function listAssignedStudentIds(
+  ctx: Ctx,
+  teacherUserId: Id<"users">,
+  familyId?: Id<"families">,
+): Promise<Id<"students">[]> {
+  const rows = familyId
+    ? await ctx.db
+        .query("teacherStudentAccess")
+        .withIndex("by_family_and_teacher", (q) =>
+          q.eq("familyId", familyId).eq("teacherUserId", teacherUserId),
+        )
+        .collect()
+    : await ctx.db
+        .query("teacherStudentAccess")
+        .withIndex("by_teacher", (q) => q.eq("teacherUserId", teacherUserId))
+        .collect();
+  return rows.map((r) => r.studentId);
+}
+
+export async function listAssignedCourseIds(
+  ctx: Ctx,
+  teacherUserId: Id<"users">,
+  familyId?: Id<"families">,
+): Promise<Id<"courses">[]> {
+  const rows = familyId
+    ? await ctx.db
+        .query("teacherCourseAccess")
+        .withIndex("by_family_and_teacher", (q) =>
+          q.eq("familyId", familyId).eq("teacherUserId", teacherUserId),
+        )
+        .collect()
+    : await ctx.db
+        .query("teacherCourseAccess")
+        .withIndex("by_teacher", (q) => q.eq("teacherUserId", teacherUserId))
+        .collect();
+  return rows.map((r) => r.courseId);
+}
+
+export async function requireSchoolAdmin(
+  ctx: Ctx,
+  familyId: Id<"families">,
+): Promise<{
+  user: Doc<"users">;
+  family: Doc<"families">;
+  membership: Doc<"familyMembers"> | null;
+  schoolRole: SchoolRole | "superAdmin";
+}> {
+  const { user, membership } = await requireFamilyAccess(ctx, familyId);
+  const family = await ctx.db.get("families", familyId);
+  if (!family) {
+    throw new Error("School not found");
+  }
+  if (user.role === "superAdmin") {
+    return { user, family, membership, schoolRole: "superAdmin" };
+  }
+  const schoolRole = resolveSchoolRole(membership, family, user._id);
+  if (schoolRole !== "main" && schoolRole !== "admin") {
+    throw new Error("Unauthorized: school admin or main parent required");
+  }
+  return { user, family, membership, schoolRole };
+}
+
+export async function requireParentOrSchoolAdmin(
+  ctx: Ctx,
+  familyId: Id<"families">,
+): Promise<{
+  user: Doc<"users">;
+  family: Doc<"families">;
+  membership: Doc<"familyMembers"> | null;
+  schoolRole: SchoolRole | "superAdmin";
+}> {
+  const { user, membership } = await requireFamilyAccess(ctx, familyId);
+  const family = await ctx.db.get("families", familyId);
+  if (!family) {
+    throw new Error("School not found");
+  }
+  if (user.role === "superAdmin") {
+    return { user, family, membership, schoolRole: "superAdmin" };
+  }
+  const schoolRole = resolveSchoolRole(membership, family, user._id);
+  if (!schoolRole) {
+    throw new Error("Unauthorized: not a parent of this school");
+  }
+  return { user, family, membership, schoolRole };
+}
+
 export async function requireStudentFamilyAccess(
   ctx: Ctx,
   studentId: Id<"students">,
@@ -114,11 +259,15 @@ export async function requireStudentFamilyAccess(
   }
 
   const membership = await getFamilyMembership(ctx, student.familyId, user._id);
-  if (!membership) {
-    throw new Error("Unauthorized: no access to this student");
+  if (membership) {
+    return { user, student };
   }
 
-  return { user, student };
+  if (await teacherHasStudentAccess(ctx, user._id, studentId)) {
+    return { user, student };
+  }
+
+  throw new Error("Unauthorized: no access to this student");
 }
 
 /**
@@ -196,6 +345,9 @@ export async function userHasFeedCircleAccess(
     if (sub && sub.status === "active") return true;
   }
 
+  const staff = await getSchoolStaff(ctx, familyId, user._id);
+  if (staff) return true;
+
   return false;
 }
 
@@ -234,11 +386,19 @@ export async function getPrimaryFamilyForUser(
     .withIndex("by_user", (q) => q.eq("userId", userId))
     .first();
 
-  if (!membership) {
-    return null;
+  if (membership) {
+    return await ctx.db.get("families", membership.familyId);
   }
 
-  return await ctx.db.get("families", membership.familyId);
+  const staff = await ctx.db
+    .query("schoolStaff")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .first();
+  if (staff) {
+    return await ctx.db.get("families", staff.familyId);
+  }
+
+  return null;
 }
 
 export async function getAcademyMembership(
@@ -395,6 +555,16 @@ export async function deleteStudentData(
     await ctx.db.delete("schedules", schedule._id);
   }
 
+  const studentAccess = await ctx.db
+    .query("teacherStudentAccess")
+    .withIndex("by_student", (q) => q.eq("studentId", studentId))
+    .collect();
+  for (const row of studentAccess) {
+    await ctx.db.delete("teacherStudentAccess", row._id);
+  }
+
+  await deleteContactsForStudent(ctx, studentId);
+
   if (student?.imageStorageId) {
     await ctx.storage.delete(student.imageStorageId);
   }
@@ -406,6 +576,20 @@ export async function deleteCourseCascade(
   ctx: MutationCtx,
   courseId: Id<"courses">,
 ): Promise<void> {
+  const courseAccess = await ctx.db
+    .query("teacherCourseAccess")
+    .withIndex("by_course", (q) => q.eq("courseId", courseId))
+    .collect();
+  for (const row of courseAccess) {
+    await ctx.db.delete("teacherCourseAccess", row._id);
+  }
+  const contactLinks = await ctx.db
+    .query("contactCourseLinks")
+    .withIndex("by_course", (q) => q.eq("courseId", courseId))
+    .collect();
+  for (const link of contactLinks) {
+    await ctx.db.delete("contactCourseLinks", link._id);
+  }
   await deleteModulesForCourse(ctx, courseId);
   await ctx.db.delete("courses", courseId);
 }
@@ -431,8 +615,41 @@ export async function deleteFamilyCascade(
     .withIndex("by_family", (q) => q.eq("familyId", familyId))
     .collect();
   for (const course of courses) {
+    const courseAccess = await ctx.db
+      .query("teacherCourseAccess")
+      .withIndex("by_course", (q) => q.eq("courseId", course._id))
+      .collect();
+    for (const row of courseAccess) {
+      await ctx.db.delete("teacherCourseAccess", row._id);
+    }
     await deleteCourseCascade(ctx, course._id);
   }
+
+  const teacherAccess = await ctx.db
+    .query("teacherStudentAccess")
+    .withIndex("by_family", (q) => q.eq("familyId", familyId))
+    .collect();
+  for (const row of teacherAccess) {
+    await ctx.db.delete("teacherStudentAccess", row._id);
+  }
+
+  const remainingCourseAccess = await ctx.db
+    .query("teacherCourseAccess")
+    .withIndex("by_family", (q) => q.eq("familyId", familyId))
+    .collect();
+  for (const row of remainingCourseAccess) {
+    await ctx.db.delete("teacherCourseAccess", row._id);
+  }
+
+  const staff = await ctx.db
+    .query("schoolStaff")
+    .withIndex("by_family", (q) => q.eq("familyId", familyId))
+    .collect();
+  for (const row of staff) {
+    await ctx.db.delete("schoolStaff", row._id);
+  }
+
+  await deleteContactsForFamily(ctx, familyId);
 
   const subs = await ctx.db
     .query("familyAcademySubscriptions")

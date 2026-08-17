@@ -5,11 +5,13 @@ import {
   deleteStudentData,
   getCurrentUser,
   getPrimaryFamilyForUser,
+  listAssignedStudentIds,
   requireFamilyAccess,
   requireFeedCircleAccess,
   requireRole,
   requireStudentFamilyAccess,
 } from "./lib/auth";
+import { upsertEntityContact } from "./lib/contacts";
 import { studentDocValidator } from "./lib/validators";
 
 export const listForMyFamily = query({
@@ -17,6 +19,17 @@ export const listForMyFamily = query({
   returns: v.array(studentDocValidator),
   handler: async (ctx) => {
     const user = await getCurrentUser(ctx);
+
+    if (user.role === "teacher") {
+      const assignedIds = await listAssignedStudentIds(ctx, user._id);
+      const students = [];
+      for (const studentId of assignedIds) {
+        const student = await ctx.db.get("students", studentId);
+        if (student) students.push(student);
+      }
+      return students;
+    }
+
     const family = await getPrimaryFamilyForUser(ctx, user._id);
     if (!family) {
       return [];
@@ -33,11 +46,21 @@ export const listForFamily = query({
   args: { familyId: v.id("families") },
   returns: v.array(studentDocValidator),
   handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
     await requireFeedCircleAccess(ctx, args.familyId);
-    return await ctx.db
+    const students = await ctx.db
       .query("students")
       .withIndex("by_family", (q) => q.eq("familyId", args.familyId))
       .collect();
+    if (user.role === "teacher") {
+      const assigned = new Set(
+        (await listAssignedStudentIds(ctx, user._id, args.familyId)).map(
+          (id) => id as string,
+        ),
+      );
+      return students.filter((s) => assigned.has(s._id));
+    }
+    return students;
   },
 });
 
@@ -68,13 +91,23 @@ export const create = mutation({
       throw new Error("Student name is required");
     }
 
-    return await ctx.db.insert("students", {
+    const studentId = await ctx.db.insert("students", {
       familyId,
       displayName,
       birthYear: args.birthYear,
       academicLevel: args.academicLevel?.trim() || undefined,
       createdAt: Date.now(),
     });
+
+    await upsertEntityContact(ctx, {
+      kind: "student",
+      familyId,
+      studentId,
+      displayName,
+      roleLabel: "student",
+    });
+
+    return studentId;
   },
 });
 
@@ -147,6 +180,16 @@ export const update = mutation({
     }
 
     await ctx.db.patch("students", student._id, patch);
+    if (patch.displayName) {
+      await upsertEntityContact(ctx, {
+        kind: "student",
+        familyId: student.familyId,
+        studentId: student._id,
+        userId: student.userId,
+        displayName: patch.displayName,
+        roleLabel: "student",
+      });
+    }
     return null;
   },
 });
@@ -190,6 +233,15 @@ export const linkToCurrentUser = mutation({
     }
 
     await ctx.db.patch("students", args.studentId, { userId: user._id });
+    await upsertEntityContact(ctx, {
+      kind: "student",
+      familyId: student.familyId,
+      studentId: args.studentId,
+      userId: user._id,
+      displayName: student.displayName,
+      emails: user.email ? [user.email] : [],
+      roleLabel: "student",
+    });
     return null;
   },
 });
@@ -223,6 +275,15 @@ export const linkByEmail = mutation({
     if (!target.role) {
       await ctx.db.patch("users", target._id, { role: "student" });
     }
+    await upsertEntityContact(ctx, {
+      kind: "student",
+      familyId: student.familyId,
+      studentId: student._id,
+      userId: target._id,
+      displayName: student.displayName,
+      emails: target.email ? [target.email] : [],
+      roleLabel: "student",
+    });
     return null;
   },
 });
@@ -273,6 +334,15 @@ export const claimByName = mutation({
           throw new Error("That student profile is already linked");
         }
         await ctx.db.patch("students", match._id, { userId: user._id });
+        await upsertEntityContact(ctx, {
+          kind: "student",
+          familyId: family._id,
+          studentId: match._id,
+          userId: user._id,
+          displayName: match.displayName,
+          emails: user.email ? [user.email] : [],
+          roleLabel: "student",
+        });
         return match._id;
       }
     }

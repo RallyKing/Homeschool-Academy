@@ -56,6 +56,7 @@ export const create = mutation({
       academyId,
       userId: user._id,
       role: "admin",
+      memberKind: "teacher",
       createdAt: now,
     });
 
@@ -92,6 +93,7 @@ export const ensureMine = mutation({
       academyId,
       userId: user._id,
       role: "admin",
+      memberKind: "teacher",
       createdAt: now,
     });
 
@@ -167,6 +169,7 @@ export const addMember = mutation({
       academyId: args.academyId,
       userId: args.userId,
       role: args.role,
+      memberKind: "teacher",
       createdAt: Date.now(),
     });
   },

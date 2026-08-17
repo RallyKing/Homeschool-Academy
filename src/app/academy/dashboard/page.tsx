@@ -31,13 +31,15 @@ type EditTarget =
   | { kind: "lesson"; id: Id<"lessons">; title: string }
   | null;
 
-const ACADEMY_TABS = ["academies", "courses", "subscribers"] as const;
+const ACADEMY_TABS = ["students", "academies", "courses", "subscribers"] as const;
 
 function AcademyDashboardInner() {
-  const [tab, setTab] = usePageTab(ACADEMY_TABS, "academies");
+  const [tab, setTab] = usePageTab(ACADEMY_TABS, "students");
   const user = useQuery(api.users.current);
   const status = useQuery(api.users.onboardingStatus);
   const academies = useQuery(api.academies.myAcademies);
+  const assignedStudents = useQuery(api.students.listForMyFamily);
+  const assignedCourses = useQuery(api.courses.listAssignedToMe);
   const subjects = useQuery(api.subjects.list);
   const createAcademy = useMutation(api.academies.create);
   const updateAcademy = useMutation(api.academies.update);
@@ -209,7 +211,7 @@ function AcademyDashboardInner() {
         compact
         eyebrow="Academy"
         title="Dashboard"
-        description="Publish courses and see which families have subscribed."
+        description="Assigned students and classes, plus academy courses you publish."
         actions={
           <div className="flex flex-wrap gap-2">
             <Link href="/academy/cheers">
@@ -228,6 +230,11 @@ function AcademyDashboardInner() {
 
       <Tabs
         tabs={[
+          {
+            id: "students",
+            label: "Assigned",
+            count: assignedStudents?.length,
+          },
           { id: "academies", label: "Academies", count: academies?.length },
           { id: "courses", label: "Courses", count: courses?.length },
           { id: "subscribers", label: "Subscribers", count: subscribers?.length },
@@ -235,6 +242,55 @@ function AcademyDashboardInner() {
         value={tab}
         onChange={setTab}
       />
+
+      <TabPanel id="students" active={tab === "students"}>
+        <Section
+          title="Assigned students"
+          description="Only students selected by a school admin appear here."
+        >
+          {assignedStudents === undefined ? (
+            <p className="text-sm text-[var(--muted)]">Loading…</p>
+          ) : assignedStudents.length === 0 ? (
+            <EmptyState>
+              No students assigned yet. A school admin can grant access in
+              Settings → Accounts → Teachers.
+            </EmptyState>
+          ) : (
+            <ul className="space-y-1.5">
+              {assignedStudents.map((s) => (
+                <li key={s._id} className="list-row list-row-dense">
+                  <div>
+                    <p className="font-medium">{s.displayName}</p>
+                    <p className="text-xs text-[var(--muted)]">
+                      {s.academicLevel ?? "Student"}
+                    </p>
+                  </div>
+                  <Link href={`/family/students/${s._id}`}>
+                    <Button variant="secondary" size="sm">
+                      Open
+                    </Button>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Section>
+        <Section title="Assigned courses">
+          {assignedCourses === undefined ? (
+            <p className="text-sm text-[var(--muted)]">Loading…</p>
+          ) : assignedCourses.length === 0 ? (
+            <EmptyState>No courses assigned yet.</EmptyState>
+          ) : (
+            <ul className="space-y-1.5">
+              {assignedCourses.map((c) => (
+                <li key={c._id} className="list-row list-row-dense">
+                  <span className="font-medium">{c.title}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Section>
+      </TabPanel>
 
       <TabPanel id="academies" active={tab === "academies"}>
       <Section title="My academies" description="Select an academy to manage courses.">

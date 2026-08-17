@@ -109,9 +109,47 @@ export const familyDocValidator = v.object({
   name: v.string(),
   createdBy: v.id("users"),
   createdAt: v.number(),
+  mainParentUserId: v.optional(v.id("users")),
   parentGuardrailContext: v.optional(v.string()),
   hiddenSubjectIds: v.optional(v.array(v.id("subjects"))),
   defaultPublicCheer: v.optional(v.boolean()),
+});
+
+export const schoolRoleValidator = v.union(
+  v.literal("main"),
+  v.literal("admin"),
+  v.literal("regular"),
+);
+
+export const staffKindValidator = v.union(
+  v.literal("teacher"),
+  v.literal("tutor"),
+);
+
+export const contactKindValidator = v.union(
+  v.literal("school"),
+  v.literal("parent"),
+  v.literal("teacher"),
+  v.literal("tutor"),
+  v.literal("student"),
+  v.literal("user"),
+);
+
+export const contactDocValidator = v.object({
+  _id: v.id("contacts"),
+  _creationTime: v.number(),
+  kind: contactKindValidator,
+  familyId: v.optional(v.id("families")),
+  userId: v.optional(v.id("users")),
+  studentId: v.optional(v.id("students")),
+  academyId: v.optional(v.id("academies")),
+  displayName: v.string(),
+  emails: v.array(v.string()),
+  phones: v.array(v.string()),
+  notes: v.optional(v.string()),
+  roleLabel: v.optional(v.string()),
+  createdAt: v.number(),
+  updatedAt: v.optional(v.number()),
 });
 
 export const courseDocValidator = v.object({

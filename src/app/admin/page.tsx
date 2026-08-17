@@ -309,6 +309,11 @@ function AdminInner() {
 
   const navLinks = (
     <div className="flex flex-wrap gap-2">
+      <Link href="/admin/accounts">
+        <Button variant="secondary" size="sm">
+          Accounts
+        </Button>
+      </Link>
       <Link href="/admin/product-updates">
         <Button variant="secondary" size="sm">
           Updates

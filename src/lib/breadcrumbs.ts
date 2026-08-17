@@ -69,6 +69,7 @@ const FAMILY_DASH_TAB_LABELS: Record<string, string> = {
 };
 
 const FAMILY_SETTINGS_TAB_LABELS: Record<string, string> = {
+  accounts: "Accounts",
   household: "Household",
   students: "Students",
   subjects: "Subjects",
@@ -274,7 +275,7 @@ const ROUTES: RouteRule[] = [
         homeCrumb(ctx.role),
         { label: "Settings", href: "/family/settings" },
       ];
-      if (ctx.tab && ctx.tab !== "household") {
+      if (ctx.tab && ctx.tab !== "accounts") {
         crumbs.push({
           label: FAMILY_SETTINGS_TAB_LABELS[ctx.tab] ?? titleCase(ctx.tab),
         });
@@ -360,6 +361,13 @@ const ROUTES: RouteRule[] = [
     },
   },
   {
+    test: exact("/admin/accounts"),
+    build: () => [
+      { label: "Admin", href: "/admin" },
+      { label: "Accounts" },
+    ],
+  },
+  {
     test: exact("/admin/product-updates"),
     build: () => [
       { label: "Admin", href: "/admin" },
@@ -375,6 +383,18 @@ const ROUTES: RouteRule[] = [
   },
 
   // ── Shared account / alerts ─────────────────────────────
+  {
+    test: exact("/contacts"),
+    build: (ctx) => [homeCrumb(ctx.role), { label: "Contacts" }],
+  },
+  {
+    test: (p) => p.startsWith("/contacts/") && p !== "/contacts/",
+    build: (ctx) => [
+      homeCrumb(ctx.role),
+      { label: "Contacts", href: "/contacts" },
+      { label: "Profile" },
+    ],
+  },
   {
     test: exact("/alerts"),
     build: (ctx) => [homeCrumb(ctx.role), { label: "Alerts" }],
