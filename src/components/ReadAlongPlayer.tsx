@@ -16,13 +16,19 @@ import { localIsoDate, localWeekStart } from "@/lib/dates";
 import {
   farthestMatchedIndex,
   getSpeechRecognitionCtor,
+  hasNewUnmatchedSpeech,
   isSkippableToken,
   LOOKAHEAD_WORDS,
+  micAfterHelpFinished,
+  micAfterMiss,
+  micAfterRecognitionEnded,
+  micAfterUserStop,
   speakText,
   speechRecognitionSupported,
   splitHighlightWords,
   stopSpeaking,
   ttsSupported,
+  type MicIntent,
 } from "@/lib/readAlongSpeech";
 
 type WordEvent = {
@@ -34,6 +40,7 @@ type WordEvent = {
 const FLUSH_EVERY = 8;
 const FLUSH_MS = 300;
 const MISS_GRACE_MS = 2500;
+const FIRST_MISS_RESUME_MS = 500;
 
 export function ReadAlongPlayer({
   sessionId,
@@ -83,9 +90,15 @@ export function ReadAlongPlayer({
   const indexRef = useRef(0);
   const missesRef = useRef(0);
   const listeningRef = useRef(false);
-  const recognitionRef = useRef<{ stop: () => void; abort: () => void } | null>(
-    null,
-  );
+  const micIntentRef = useRef<MicIntent>("off");
+  const recognitionRef = useRef<{
+    start: () => void;
+    stop: () => void;
+    abort: () => void;
+  } | null>(null);
+  const listenGenRef = useRef(0);
+  const transcriptAtLastMatchRef = useRef("");
+  const resumeTimerRef = useRef<number | null>(null);
   const syncedRef = useRef(false);
   const vocabCache = useRef<Map<string, { definition: string; example: string }>>(
     new Map(),
@@ -172,6 +185,13 @@ export function ReadAlongPlayer({
     }
   }, []);
 
+  const clearResumeTimer = useCallback(() => {
+    if (resumeTimerRef.current != null) {
+      window.clearTimeout(resumeTimerRef.current);
+      resumeTimerRef.current = null;
+    }
+  }, []);
+
   const flush = useCallback(
     async (currentWordIndex: number, extraHelp: string[] = []) => {
       const queued = pendingRef.current;
@@ -250,8 +270,11 @@ export function ReadAlongPlayer({
       setHeard("");
       clearGrace();
       if (next >= words.length) {
+        micIntentRef.current = "off";
         listeningRef.current = false;
+        listenGenRef.current += 1;
         recognitionRef.current?.stop();
+        recognitionRef.current = null;
         setListening(false);
       }
       pendingRef.current = [...pendingRef.current, ...events];
@@ -270,52 +293,6 @@ export function ReadAlongPlayer({
     [advanceThrough, words],
   );
 
-  const handleMiss = useCallback(() => {
-    const i = indexRef.current;
-    const word = words[i];
-    if (!word || isSkippableToken(word)) return;
-    const nextMiss = missesRef.current + 1;
-    if (nextMiss < 2) {
-      missesRef.current = nextMiss;
-      setMisses(nextMiss);
-      notify(`Try "${normalizeDisplay(word)}" again.`, "info");
-      return;
-    }
-    if (ttsOk) speakText(normalizeDisplay(word), { rate: 0.8 });
-    notify(`Listen: ${normalizeDisplay(word)}. Keep going.`, "info");
-    advance("helped", normalizeDisplay(word));
-  }, [advance, notify, ttsOk, words]);
-
-  const handleMatch = useCallback(() => {
-    const result = missesRef.current > 0 ? "retry_ok" : "correct";
-    advance(result);
-  }, [advance]);
-
-  processHeardRef.current = (transcript: string) => {
-    const expectedWords = wordsRef.current;
-    const i = indexRef.current;
-    if (i >= expectedWords.length) return;
-    const lookAhead = missesRef.current === 0 ? LOOKAHEAD_WORDS : 0;
-    const matched = farthestMatchedIndex(
-      transcript,
-      expectedWords,
-      i,
-      lookAhead,
-    );
-    if (matched >= i) {
-      const result = missesRef.current > 0 ? "retry_ok" : "correct";
-      advanceThrough(matched, result);
-      return;
-    }
-    if (transcript.trim().length === 0) return;
-    if (graceTimerRef.current != null) return;
-    graceTimerRef.current = window.setTimeout(() => {
-      graceTimerRef.current = null;
-      if (!listeningRef.current) return;
-      handleMiss();
-    }, MISS_GRACE_MS);
-  };
-
   const startListening = useCallback(() => {
     const Ctor = getSpeechRecognitionCtor();
     if (!Ctor) {
@@ -324,7 +301,13 @@ export function ReadAlongPlayer({
       );
       return;
     }
+    listenGenRef.current += 1;
+    const gen = listenGenRef.current;
     recognitionRef.current?.abort();
+    recognitionRef.current = null;
+    clearResumeTimer();
+    transcriptAtLastMatchRef.current = "";
+
     const rec = new Ctor();
     rec.lang = "en-US";
     rec.continuous = true;
@@ -344,49 +327,168 @@ export function ReadAlongPlayer({
       processHeardRef.current(latest);
     };
     rec.onerror = (ev) => {
+      if (ev.error === "aborted" || ev.error === "no-speech") return;
       if (ev.error === "not-allowed") {
+        micIntentRef.current = "off";
+        listeningRef.current = false;
         setListenError(
           "Microphone blocked. Allow the mic for this site, or tap Next after you read each word.",
         );
         setListening(false);
         return;
       }
-      if (ev.error === "no-speech") return;
       setListenError(`Mic: ${ev.error}`);
     };
     rec.onend = () => {
-      if (listeningRef.current) {
+      if (gen !== listenGenRef.current) return;
+      transcriptAtLastMatchRef.current = "";
+      if (micAfterRecognitionEnded(micIntentRef.current) !== "restart") return;
+      const retryStart = (attempt: number) => {
+        if (gen !== listenGenRef.current) return;
+        if (micAfterRecognitionEnded(micIntentRef.current) !== "restart") return;
         try {
           rec.start();
         } catch {
-          setListening(false);
+          if (attempt >= 2) {
+            micIntentRef.current = "off";
+            listeningRef.current = false;
+            setListening(false);
+            return;
+          }
+          window.setTimeout(() => retryStart(attempt + 1), attempt === 0 ? 0 : 50);
         }
-      }
+      };
+      retryStart(0);
     };
     try {
       rec.start();
       recognitionRef.current = rec;
+      micIntentRef.current = "live";
+      listeningRef.current = true;
       setListening(true);
       setListenError(null);
     } catch {
       setListenError("Could not start the microphone. Try again, or tap Next.");
     }
-  }, []);
+  }, [clearResumeTimer]);
 
   const stopListening = useCallback(() => {
+    const next = micAfterUserStop();
+    micIntentRef.current = next.intent;
+    listeningRef.current = false;
+    listenGenRef.current += 1;
+    setListening(false);
+    clearGrace();
+    clearResumeTimer();
+    recognitionRef.current?.stop();
+    recognitionRef.current = null;
+  }, [clearGrace, clearResumeTimer]);
+
+  const resumeMicAfterHelp = useCallback(() => {
+    if (indexRef.current >= wordsRef.current.length) return;
+    if (micAfterHelpFinished(micIntentRef.current).command !== "start") return;
+    startListening();
+  }, [startListening]);
+
+  const pauseMicForHelp = useCallback(() => {
+    const next = micAfterMiss(micIntentRef.current);
+    micIntentRef.current = next.intent;
     listeningRef.current = false;
     setListening(false);
     clearGrace();
-    recognitionRef.current?.stop();
+    listenGenRef.current += 1;
+    if (next.command === "stop") {
+      recognitionRef.current?.stop();
+    }
     recognitionRef.current = null;
   }, [clearGrace]);
 
+  const handleMiss = useCallback(() => {
+    const i = indexRef.current;
+    const word = words[i];
+    if (!word || isSkippableToken(word)) return;
+    pauseMicForHelp();
+    const nextMiss = missesRef.current + 1;
+    if (nextMiss < 2) {
+      missesRef.current = nextMiss;
+      setMisses(nextMiss);
+      notify(`Try "${normalizeDisplay(word)}" again.`, "info");
+      clearResumeTimer();
+      resumeTimerRef.current = window.setTimeout(() => {
+        resumeTimerRef.current = null;
+        resumeMicAfterHelp();
+      }, FIRST_MISS_RESUME_MS);
+      return;
+    }
+    const helped = normalizeDisplay(word);
+    notify(`Listen: ${helped}. Keep going.`, "info");
+    advance("helped", helped);
+    if (ttsOk) {
+      speakText(helped, {
+        rate: 0.8,
+        onEnd: () => resumeMicAfterHelp(),
+      });
+      return;
+    }
+    resumeMicAfterHelp();
+  }, [
+    advance,
+    clearResumeTimer,
+    notify,
+    pauseMicForHelp,
+    resumeMicAfterHelp,
+    ttsOk,
+    words,
+  ]);
+
+  const handleMatch = useCallback(() => {
+    const result = missesRef.current > 0 ? "retry_ok" : "correct";
+    advance(result);
+    if (micIntentRef.current === "paused") {
+      resumeMicAfterHelp();
+    }
+  }, [advance, resumeMicAfterHelp]);
+
+  processHeardRef.current = (transcript: string) => {
+    if (micIntentRef.current !== "live") return;
+    const expectedWords = wordsRef.current;
+    const i = indexRef.current;
+    if (i >= expectedWords.length) return;
+    const lookAhead = missesRef.current === 0 ? LOOKAHEAD_WORDS : 0;
+    const matched = farthestMatchedIndex(
+      transcript,
+      expectedWords,
+      i,
+      lookAhead,
+    );
+    if (matched >= i) {
+      transcriptAtLastMatchRef.current = transcript;
+      const result = missesRef.current > 0 ? "retry_ok" : "correct";
+      advanceThrough(matched, result);
+      return;
+    }
+    if (!hasNewUnmatchedSpeech(transcript, transcriptAtLastMatchRef.current)) {
+      return;
+    }
+    if (graceTimerRef.current != null) return;
+    graceTimerRef.current = window.setTimeout(() => {
+      graceTimerRef.current = null;
+      if (micIntentRef.current !== "live") return;
+      handleMiss();
+    }, MISS_GRACE_MS);
+  };
+
   useEffect(() => {
     return () => {
+      listenGenRef.current += 1;
+      micIntentRef.current = "off";
       recognitionRef.current?.abort();
       stopSpeaking();
       if (graceTimerRef.current != null) {
         window.clearTimeout(graceTimerRef.current);
+      }
+      if (resumeTimerRef.current != null) {
+        window.clearTimeout(resumeTimerRef.current);
       }
       if (flushTimerRef.current != null) {
         window.clearTimeout(flushTimerRef.current);
@@ -592,9 +694,9 @@ export function ReadAlongPlayer({
         </Message>
       ) : (
         <p className="text-sm text-[var(--muted)]">
-          We’ll keep listening while you read and follow along — even if you
-          read ahead. Chrome and Edge use the browser’s speech service; we don’t
-          store the audio.
+          We’ll keep the mic on while you’re reading well, and follow along even
+          if you read ahead. It only pauses if a word is missed. Chrome and Edge
+          use the browser’s speech service; we don’t store the audio.
         </p>
       )}
 
@@ -723,7 +825,17 @@ export function ReadAlongPlayer({
                   size="lg"
                   className="read-along-dock-btn"
                   variant="ghost"
-                  onClick={() => speakText(normalizeDisplay(current))}
+                  onClick={() => {
+                    if (!current) return;
+                    clearResumeTimer();
+                    speakText(normalizeDisplay(current), {
+                      onEnd: () => {
+                        if (micIntentRef.current === "paused") {
+                          resumeMicAfterHelp();
+                        }
+                      },
+                    });
+                  }}
                 >
                   Hear this word
                 </Button>

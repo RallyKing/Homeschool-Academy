@@ -153,6 +153,66 @@ export function farthestMatchedIndex(
   return lastMatched;
 }
 
+export type MicIntent = "off" | "live" | "paused";
+export type MicCommand = "none" | "start" | "stop";
+
+export function micAfterCorrectMatch(intent: MicIntent): {
+  intent: MicIntent;
+  command: MicCommand;
+} {
+  return { intent, command: "none" };
+}
+
+export function micAfterMiss(_intent: MicIntent): {
+  intent: "paused";
+  command: "stop";
+} {
+  return { intent: "paused", command: "stop" };
+}
+
+export function micAfterRecognitionEnded(
+  intent: MicIntent,
+): "restart" | "stay_off" {
+  return intent === "live" ? "restart" : "stay_off";
+}
+
+export function micAfterHelpFinished(intent: MicIntent): {
+  intent: MicIntent;
+  command: MicCommand;
+} {
+  if (intent === "paused") {
+    return { intent: "live", command: "start" };
+  }
+  return { intent, command: "none" };
+}
+
+export function micAfterUserStop(): { intent: "off"; command: "stop" } {
+  return { intent: "off", command: "stop" };
+}
+
+/**
+ * After a match, Chrome still reports the same finalized transcript.
+ * That leftover text must not start a miss timer. New tokens (or a
+ * fresh recognition session) should.
+ */
+export function hasNewUnmatchedSpeech(
+  transcript: string,
+  transcriptAtLastMatch: string,
+): boolean {
+  const current = tokenizeTranscript(transcript);
+  const previous = tokenizeTranscript(transcriptAtLastMatch);
+  if (current.length === 0) return false;
+  if (previous.length === 0) return true;
+  const isExtension = previous.every(
+    (token, i) => foldWord(token) === foldWord(current[i] ?? ""),
+  );
+  if (isExtension) return current.length > previous.length;
+  const same =
+    current.length === previous.length &&
+    previous.every((token, i) => foldWord(token) === foldWord(current[i] ?? ""));
+  return !same;
+}
+
 export function displayWord(word: string): string {
   return word;
 }
