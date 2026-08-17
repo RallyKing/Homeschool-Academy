@@ -163,10 +163,52 @@ export function micAfterCorrectMatch(intent: MicIntent): {
   return { intent, command: "none" };
 }
 
-export function micAfterMiss(_intent: MicIntent): {
-  intent: "paused";
-  command: "stop";
+export const MAX_WORD_MISS_TRIES = 3;
+
+export function spokenWordForTts(rawWord: string): string {
+  return rawWord.replace(/^[^\w]+|[^\w]+$/g, "") || rawWord;
+}
+
+export type MissTryPlan =
+  | { kind: "unaided_retry"; spokenWord: string }
+  | { kind: "tts_then_listen"; spokenWord: string }
+  | { kind: "tts_then_skip"; spokenWord: string; result: "helped" };
+
+/**
+ * 1) Original miss — stay, unaided retry, mic stays on.
+ * 2) Retry failed — TTS the word, stay, listen for a correct repeat.
+ * 3) Still wrong — TTS once more, mark helped, skip to the next word.
+ */
+export function planMissTry(
+  failedAttempts: number,
+  rawWord: string,
+): MissTryPlan {
+  const spokenWord = spokenWordForTts(rawWord);
+  if (failedAttempts < 2) {
+    return { kind: "unaided_retry", spokenWord };
+  }
+  if (failedAttempts < MAX_WORD_MISS_TRIES) {
+    return { kind: "tts_then_listen", spokenWord };
+  }
+  return { kind: "tts_then_skip", spokenWord, result: "helped" };
+}
+
+/** Keep the mic on after a miss so they can retry without a gap. */
+export function micAfterMiss(intent: MicIntent): {
+  intent: MicIntent;
+  command: MicCommand;
 } {
+  return { intent, command: "none" };
+}
+
+/** Pause recognition only while TTS is speaking so the mic does not hear itself. */
+export function micPauseForTts(intent: MicIntent): {
+  intent: MicIntent;
+  command: MicCommand;
+} {
+  if (intent === "off") {
+    return { intent: "off", command: "none" };
+  }
   return { intent: "paused", command: "stop" };
 }
 

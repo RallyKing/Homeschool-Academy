@@ -34,9 +34,10 @@ import {
   isSkippableToken,
   LOOKAHEAD_WORDS,
   micAfterHelpFinished,
-  micAfterMiss,
   micAfterRecognitionEnded,
   micAfterUserStop,
+  micPauseForTts,
+  planMissTry,
   speakText,
   speechRecognitionSupported,
   splitHighlightWords,
@@ -54,7 +55,6 @@ type WordEvent = {
 const FLUSH_EVERY = 8;
 const FLUSH_MS = 300;
 const MISS_GRACE_MS = 2500;
-const FIRST_MISS_RESUME_MS = 500;
 
 export function ReadAlongPlayer({
   sessionId,
@@ -118,7 +118,7 @@ export function ReadAlongPlayer({
   } | null>(null);
   const listenGenRef = useRef(0);
   const transcriptAtLastMatchRef = useRef("");
-  const resumeTimerRef = useRef<number | null>(null);
+  const lastTranscriptRef = useRef("");
   const syncedRef = useRef(false);
   const vocabCache = useRef<Map<string, { definition: string; example: string }>>(
     new Map(),
@@ -209,13 +209,6 @@ export function ReadAlongPlayer({
     if (graceTimerRef.current != null) {
       window.clearTimeout(graceTimerRef.current);
       graceTimerRef.current = null;
-    }
-  }, []);
-
-  const clearResumeTimer = useCallback(() => {
-    if (resumeTimerRef.current != null) {
-      window.clearTimeout(resumeTimerRef.current);
-      resumeTimerRef.current = null;
     }
   }, []);
 
@@ -372,7 +365,6 @@ export function ReadAlongPlayer({
     const gen = listenGenRef.current;
     recognitionRef.current?.abort();
     recognitionRef.current = null;
-    clearResumeTimer();
     transcriptAtLastMatchRef.current = "";
 
     const rec = new Ctor();
@@ -439,7 +431,7 @@ export function ReadAlongPlayer({
     } catch {
       setListenError("Could not start the microphone. Try again, or tap Next.");
     }
-  }, [clearResumeTimer]);
+  }, []);
 
   const stopListening = useCallback(() => {
     const next = micAfterUserStop();
@@ -448,11 +440,10 @@ export function ReadAlongPlayer({
     listenGenRef.current += 1;
     setListening(false);
     clearGrace();
-    clearResumeTimer();
     clearIdleTimer();
     recognitionRef.current?.stop();
     recognitionRef.current = null;
-  }, [clearGrace, clearIdleTimer, clearResumeTimer]);
+  }, [clearGrace, clearIdleTimer]);
 
   const noteReaderActivity = useCallback(() => {
     lastActivityRef.current = Date.now();
@@ -498,11 +489,9 @@ export function ReadAlongPlayer({
     startListening();
   }, [startListening]);
 
-  const pauseMicForHelp = useCallback(() => {
-    const next = micAfterMiss(micIntentRef.current);
+  const pauseMicForTts = useCallback(() => {
+    const next = micPauseForTts(micIntentRef.current);
     micIntentRef.current = next.intent;
-    listeningRef.current = false;
-    setListening(false);
     clearGrace();
     clearIdleTimer();
     listenGenRef.current += 1;
@@ -516,35 +505,44 @@ export function ReadAlongPlayer({
     const i = indexRef.current;
     const word = words[i];
     if (!word || isSkippableToken(word)) return;
-    pauseMicForHelp();
     const nextMiss = missesRef.current + 1;
-    if (nextMiss < 2) {
-      missesRef.current = nextMiss;
-      setMisses(nextMiss);
-      notify(`Try "${normalizeDisplay(word)}" again.`, "info");
-      clearResumeTimer();
-      resumeTimerRef.current = window.setTimeout(() => {
-        resumeTimerRef.current = null;
-        resumeMicAfterHelp();
-      }, FIRST_MISS_RESUME_MS);
+    missesRef.current = nextMiss;
+    setMisses(nextMiss);
+    transcriptAtLastMatchRef.current = lastTranscriptRef.current;
+    clearGrace();
+    noteReaderActivityRef.current();
+    const plan = planMissTry(nextMiss, word);
+
+    if (plan.kind === "unaided_retry") {
+      notify(`Try "${plan.spokenWord}" again.`, "info");
       return;
     }
-    const helped = normalizeDisplay(word);
-    notify(`Listen: ${helped}. Keep going.`, "info");
-    advance("helped", helped);
-    if (ttsOk) {
-      speakText(helped, {
-        rate: 0.8,
-        onEnd: () => resumeMicAfterHelp(),
-      });
+
+    const speakThen = (after: () => void) => {
+      pauseMicForTts();
+      if (ttsOk) {
+        speakText(plan.spokenWord, { onEnd: after });
+        return;
+      }
+      after();
+    };
+
+    if (plan.kind === "tts_then_listen") {
+      notify(`Listen: ${plan.spokenWord}. Now you say it.`, "info");
+      speakThen(() => resumeMicAfterHelp());
       return;
     }
-    resumeMicAfterHelp();
+
+    notify(`Listen: ${plan.spokenWord}. Keep going.`, "info");
+    speakThen(() => {
+      advance("helped", plan.spokenWord);
+      resumeMicAfterHelp();
+    });
   }, [
     advance,
-    clearResumeTimer,
+    clearGrace,
     notify,
-    pauseMicForHelp,
+    pauseMicForTts,
     resumeMicAfterHelp,
     ttsOk,
     words,
@@ -560,6 +558,7 @@ export function ReadAlongPlayer({
 
   processHeardRef.current = (transcript: string) => {
     if (micIntentRef.current !== "live") return;
+    lastTranscriptRef.current = transcript;
     const expectedWords = wordsRef.current;
     const i = indexRef.current;
     if (i >= expectedWords.length) return;
@@ -596,9 +595,6 @@ export function ReadAlongPlayer({
       stopSpeaking();
       if (graceTimerRef.current != null) {
         window.clearTimeout(graceTimerRef.current);
-      }
-      if (resumeTimerRef.current != null) {
-        window.clearTimeout(resumeTimerRef.current);
       }
       if (flushTimerRef.current != null) {
         window.clearTimeout(flushTimerRef.current);
@@ -822,8 +818,10 @@ export function ReadAlongPlayer({
       ) : (
         <p className="text-sm text-[var(--muted)]">
           We’ll keep the mic on while you’re reading well, and follow along even
-          if you read ahead. It only pauses if a word is missed. Chrome and Edge
-          use the browser’s speech service; we don’t store the audio.
+          if you read ahead. If a word is missed, try it once more. We’ll say it
+          out loud if you still need help, then listen for you to say it. After
+          three tries we move on and save it for practice. Chrome and Edge use
+          the browser’s speech service; we don’t store the audio.
         </p>
       )}
 
@@ -892,8 +890,9 @@ export function ReadAlongPlayer({
 
           {misses > 0 && current ? (
             <Message tone="info">
-              Pause — try “{normalizeDisplay(current)}” once more. A second miss
-              plays the word so you can continue.
+              {misses === 1
+                ? `Try “${normalizeDisplay(current)}” again.`
+                : `Listen, then say “${normalizeDisplay(current)}”.`}
             </Message>
           ) : null}
         </>
@@ -996,13 +995,11 @@ export function ReadAlongPlayer({
                   variant="ghost"
                   onClick={() => {
                     if (!current) return;
-                    clearResumeTimer();
+                    if (micIntentRef.current === "live") {
+                      pauseMicForTts();
+                    }
                     speakText(normalizeDisplay(current), {
-                      onEnd: () => {
-                        if (micIntentRef.current === "paused") {
-                          resumeMicAfterHelp();
-                        }
-                      },
+                      onEnd: () => resumeMicAfterHelp(),
                     });
                   }}
                 >
